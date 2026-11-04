@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "game": "{{GAME}}",
+  "version": "{{VERSION}}",
+  "evidence": [
+    {
+      "id": "EV-001",
+      "type": "user-statement",
+      "title": "Intake answers from the user",
+      "source": "remake/00-intake.md",
+      "version": "{{VERSION}}",
+      "accessed": "{{DATE}}",
+      "accessible": true,
+      "analysis": "read",
+      "rights": "n/a",
+      "notes": "Replace or extend with real sources. Record inaccessible sources too, with accessible=false."
+    }
+  ]
+}

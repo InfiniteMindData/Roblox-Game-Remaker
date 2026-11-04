@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "game": "Lantern Hop (fictional sample)",
+  "version": "1.4.2",
+  "evidence": [
+    {"id": "EV-001", "type": "user-statement", "title": "Intake answers from the studio lead", "source": "remake/00-intake.md",
+     "version": "1.4.2", "accessed": "2026-11-04", "accessible": true, "analysis": "read", "rights": "n/a",
+     "notes": "The user is the developer, so design statements count as authoritative."},
+    {"id": "EV-002", "type": "doc", "title": "Lantern Hop movement and camera design doc (studio-internal)", "source": "remake/media/design-doc.pdf",
+     "version": "1.4.2", "accessed": "2026-11-04", "accessible": true, "analysis": "read sections 2-4", "rights": "user-owned",
+     "notes": "States FOV 90 horizontal at 16:9, coyote time 6 frames, hero height 1.4 m."},
+    {"id": "EV-003", "type": "video", "title": "Standing jump, side-on, 60 fps", "source": "remake/media/demo_jump.mkv",
+     "version": "1.4.2", "accessed": "2026-11-04", "accessible": true,
+     "analysis": "probe_video --dupes; extract_frames all; motion_track jump (bbox 288,288,24,24; 20 px/stud)", "rights": "user-captured"},
+    {"id": "EV-004", "type": "video", "title": "Standing-start run with camera pan, 60 fps", "source": "remake/media/demo_run.mkv",
+     "version": "1.4.2", "accessed": "2026-11-04", "accessible": true,
+     "analysis": "extract_frames all; motion_track speed with anchor-bbox (20 px/stud)", "rights": "user-captured"},
+    {"id": "EV-005", "type": "screenshot", "title": "Level 1-1 HUD, 1920x1080", "source": "remake/media/demo_hud.png",
+     "version": "1.4.2", "accessed": "2026-11-04", "accessible": true, "analysis": "ui_measure boxes; palette_extract", "rights": "user-captured"},
+    {"id": "EV-006", "type": "video", "title": "Speedrun of level 1-1 on a video site", "source": "https://video.example/lantern-hop-1-1",
+     "version": "unknown", "accessed": "2026-11-04", "accessible": false, "analysis": "",
+     "rights": "third-party", "notes": "Link returned an error; not analyzed. Would show enemy patrol timing."}
+  ]
+}

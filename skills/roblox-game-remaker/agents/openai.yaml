@@ -1,0 +1,4 @@
+interface:
+  display_name: "Roblox Game Remaker"
+  short_description: "Recreate a game in Roblox 1:1 from measured footage"
+  default_prompt: "Use $roblox-game-remaker to research, measure and faithfully recreate this game in Roblox Studio."

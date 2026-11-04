@@ -1,0 +1,23 @@
+{
+  "name": "RemakeTemplate",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "Remake": {
+        "$path": "src/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Remake": {
+          "$path": "src/client"
+        }
+      }
+    }
+  }
+}

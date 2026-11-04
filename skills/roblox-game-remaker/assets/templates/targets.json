@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "metrics": {
+    "ground_speed": {"target": null, "tolerance_pct": 3, "unit": "studs/s", "source": "MS-???"},
+    "accel_t90": {"target": null, "tolerance": 0.017, "unit": "s", "source": "MS-???"},
+    "jump_apex": {"target": null, "tolerance": 0.3, "unit": "studs", "source": "MS-???"},
+    "jump_rise_time": {"target": null, "tolerance": 0.017, "unit": "s", "source": "MS-???"},
+    "jump_fall_time": {"target": null, "tolerance": 0.017, "unit": "s", "source": "MS-???"}
+  }
+}

@@ -1,0 +1,5 @@
+std = "roblox"
+
+[lints]
+# Template modules intentionally keep unused parameters in callback signatures.
+unused_variable = "warn"

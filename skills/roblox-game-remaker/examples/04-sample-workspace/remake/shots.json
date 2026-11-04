@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "reference_resolution": [1920, 1080],
+  "shots": [
+    {"id": "SHOT-HUD", "evidence": "EV-005", "reference": "remake/media/demo_hud.png", "recreation": "remake/captures/SHOT-HUD.png",
+     "camera": {"position": [0, 12, 30], "look_at": [0, 4, 0], "fov": 58.7155}, "clock_time": 14.0,
+     "thresholds": {"ssim": 0.85, "delta_e_mean": 6.0, "edge_iou": 0.6}, "notes": "HUD layout and palette"}
+  ]
+}

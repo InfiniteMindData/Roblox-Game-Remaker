@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Skill validation and script tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Agent Skills reference validator
+        run: agentskills validate skills/roblox-game-remaker
+      - name: Repository validator
+        run: python tools/validate_skill.py skills/roblox-game-remaker --strict --run-help
+      - name: Fetch the Roblox engine API reference (creator-docs)
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/Roblox/creator-docs "$RUNNER_TEMP/creator-docs"
+          git -C "$RUNNER_TEMP/creator-docs" sparse-checkout set --no-cone \
+            '/content/en-us/reference/engine/classes/*.yaml' '/content/en-us/reference/engine/enums/*.yaml' \
+            '/content/en-us/reference/engine/datatypes/*.yaml'
+          echo "ROBLOX_API_DOCS=$RUNNER_TEMP/creator-docs/content/en-us/reference/engine" >> "$GITHUB_ENV"
+      - name: API cross-check
+        run: python tools/check_roblox_api.py --docs "$ROBLOX_API_DOCS" skills/roblox-game-remaker --strict
+      - name: Tests
+        run: python -m unittest discover -s tests -v
+
+  luau:
+    name: Luau template (StyLua, Selene, Lune, Rojo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: luau-tools-${{ runner.os }}-stylua-selene-lune-rojo-v1
+      - name: Install Luau tools
+        run: |
+          command -v stylua >/dev/null || cargo install --locked stylua --features luau
+          command -v selene >/dev/null || cargo install --locked selene
+          command -v lune >/dev/null || cargo install --locked lune
+          command -v rojo >/dev/null || cargo install --locked rojo
+      - name: StyLua
+        working-directory: skills/roblox-game-remaker/assets/rojo-template
+        run: stylua --check src tests
+      - name: Selene (Roblox standard library)
+        working-directory: skills/roblox-game-remaker/assets/rojo-template
+        run: selene src tests/studio
+      - name: Lune unit tests
+        working-directory: skills/roblox-game-remaker/assets/rojo-template
+        run: lune run tests/lune/run.luau
+      - name: Rojo build
+        working-directory: skills/roblox-game-remaker/assets/rojo-template
+        run: rojo build default.project.json -o "$RUNNER_TEMP/remake.rbxlx"

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "measurements": [
+    {"id": "MS-001", "what": "jump apex height", "evidence": ["EV-003"], "method": "motion_track jump, piecewise fit, frames 13-52, 20 px/stud", "value": 8.005, "uncertainty": 0.05, "unit": "studs", "frames": [13, 52]},
+    {"id": "MS-002", "what": "jump rise time", "evidence": ["EV-003"], "method": "motion_track jump, piecewise fit", "value": 0.4015, "uncertainty": 0.0167, "unit": "s"},
+    {"id": "MS-003", "what": "jump fall time", "evidence": ["EV-003"], "method": "motion_track jump, piecewise fit", "value": 0.2835, "uncertainty": 0.0167, "unit": "s"},
+    {"id": "MS-004", "what": "steady run speed", "evidence": ["EV-004"], "method": "motion_track speed, last 40% linear fit, camera pan cancelled by anchor", "value": 19.996, "uncertainty": 0.1, "unit": "studs/s"},
+    {"id": "MS-005", "what": "run ramp (linear model preferred)", "evidence": ["EV-004"], "method": "motion_track speed onset fit; linear rms 0.009 vs exponential 0.048", "value": 0.252, "uncertainty": 0.0167, "unit": "s"},
+    {"id": "MS-006", "what": "health bar box", "evidence": ["EV-005"], "method": "pixel box read from screenshot, verified with crop", "value": 420, "uncertainty": 1, "unit": "px wide (x 48, y 980, h 36)"},
+    {"id": "MS-007", "what": "health fill color", "evidence": ["EV-005"], "method": "palette_extract region 52,984,300,28 k=1", "value": "#C82832", "uncertainty": "±2 per channel", "unit": "sRGB"}
+  ]
+}
