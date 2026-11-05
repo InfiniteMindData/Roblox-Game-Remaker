@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "note": "Starting points by genre. Every value is ASSUMED: typical genre tuning, not a measurement of any particular game. Replace each value with a measurement as soon as footage allows.",
+  "presets": {
+    "platformer": {
+      "description": "3D or 2.5D platformer: quick ramps, strong air control, faster fall, coyote time and jump buffer, follow camera.",
+      "values": {
+        "World.Gravity": 112.5,
+        "Movement.WalkSpeed": 22,
+        "Movement.AccelerationTime": 0.12,
+        "Movement.DecelerationTime": 0.08,
+        "Movement.AirControl": 0.75,
+        "Movement.JumpApex": 9,
+        "Movement.FallGravityMultiplier": 1.8,
+        "Movement.ReleaseGravityMultiplier": 3,
+        "Movement.MaxFallSpeed": 90,
+        "Movement.CoyoteTime": 0.1,
+        "Movement.JumpBuffer": 0.1,
+        "Camera.Mode": "Follow",
+        "Camera.FieldOfView": 55,
+        "Camera.Distance": 18,
+        "Camera.StartPitchDeg": -12,
+        "Camera.LockMouse": false
+      }
+    },
+    "third-person-action": {
+      "description": "Over-the-shoulder action or adventure: heavier ramps, limited air control, turn-rate-limited facing.",
+      "values": {
+        "World.Gravity": 91.8,
+        "Movement.WalkSpeed": 18,
+        "Movement.AccelerationTime": 0.18,
+        "Movement.DecelerationTime": 0.15,
+        "Movement.AirControl": 0.5,
+        "Movement.JumpApex": 5,
+        "Movement.FallGravityMultiplier": 1.3,
+        "Movement.TurnSpeedDegrees": 720,
+        "Camera.Mode": "Follow",
+        "Camera.FieldOfView": 55,
+        "Camera.Distance": 10,
+        "Camera.PivotOffset": {"vector3": [0, 2.5, 0]},
+        "Camera.ShoulderOffset": {"vector3": [1.5, 0, 0]},
+        "Camera.FollowFrequency": 12,
+        "Camera.LockMouse": true
+      }
+    },
+    "top-down": {
+      "description": "Top-down or isometric action: near-instant movement, orthographic camera at an isometric angle.",
+      "values": {
+        "Movement.WalkSpeed": 18,
+        "Movement.AccelerationTime": 0.06,
+        "Movement.DecelerationTime": 0.06,
+        "Movement.JumpApex": 4,
+        "Camera.Mode": "Orthographic",
+        "Camera.OrthographicSize": 70,
+        "Camera.OrthographicPitchDeg": -55,
+        "Camera.OrthographicYawDeg": 45
+      }
+    },
+    "first-person-shooter": {
+      "description": "First-person shooter: short ramps, low air control, low jump, first-person camera at 90 degrees horizontal FOV (16:9).",
+      "values": {
+        "World.Gravity": 87.9,
+        "Movement.WalkSpeed": 18,
+        "Movement.AccelerationTime": 0.08,
+        "Movement.DecelerationTime": 0.08,
+        "Movement.AirControl": 0.4,
+        "Movement.JumpApex": 4.5,
+        "Camera.Mode": "Default",
+        "Camera.MinZoom": 0.5,
+        "Camera.MaxZoom": 0.5,
+        "Camera.FieldOfView": 58.7155
+      }
+    },
+    "retro-2d-platformer": {
+      "description": "Side-view retro platformer: orthographic side camera, snappy jump with a strong fall, coyote time. Pair with FixedStep at the original tick rate and integer UI scaling.",
+      "values": {
+        "World.Gravity": 100,
+        "Movement.WalkSpeed": 16,
+        "Movement.AccelerationTime": 0.15,
+        "Movement.DecelerationTime": 0.1,
+        "Movement.AirControl": 0.9,
+        "Movement.JumpApex": 8,
+        "Movement.FallGravityMultiplier": 1.6,
+        "Movement.CoyoteTime": 0.08,
+        "Movement.JumpBuffer": 0.1,
+        "Camera.Mode": "Orthographic",
+        "Camera.OrthographicSize": 40,
+        "Camera.OrthographicPitchDeg": 0,
+        "Camera.OrthographicYawDeg": 0,
+        "UI.ScaleRule": "height"
+      }
+    }
+  }
+}

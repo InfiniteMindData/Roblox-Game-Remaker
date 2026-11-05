@@ -1,6 +1,8 @@
 {
   "name": "roblox-game-remaker",
-  "owner": { "name": "InfiniteMindData" },
+  "owner": {
+    "name": "InfiniteMindData"
+  },
   "metadata": {
     "description": "Agent Skill for recreating games in Roblox Studio as close to 1:1 as the engine allows, with frame-by-frame research, measured breakdowns, Luau/Blender/VR implementation and visual verification."
   },
@@ -9,9 +11,11 @@
       "name": "roblox-game-remaker",
       "source": "./",
       "description": "Research, measure, document, build and verify faithful Roblox remakes (gameplay, physics, camera, UI, animation, graphics, Meta Quest VR).",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "strict": false,
-      "skills": ["./skills/roblox-game-remaker"]
+      "skills": [
+        "./skills/roblox-game-remaker"
+      ]
     }
   ]
 }

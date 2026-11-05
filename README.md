@@ -19,12 +19,14 @@ research → measure → document → translate → build → compare → fix
 - **A phased workflow with gates** (`SKILL.md`): intake and rights, research, footage analysis,
   breakdown, translation, build, a verify-and-fix loop, and delivery, plus honesty rules (it never
   claims to have analyzed footage it could not open).
-- **15 focused references**: footage analysis, animation analysis, the breakdown spec, engine-to-Roblox
+- **Session continuity**: `remake_status.py` evaluates every gate, names the next action, and
+  writes `remake/STATUS.md`, so work resumes correctly in a new session or after context resets.
+- **16 focused references**, including **recipes** with exact command sequences for common tasks: footage analysis, animation analysis, the breakdown spec, engine-to-Roblox
   translation (units, FOV conventions, tick rates, rendering limits), movement and camera feel,
   graphics and lighting matching, UI recreation, the Blender pipeline, VR and Meta Quest 3, the
   Studio MCP and CLI, verification, rights and policy, and sharp edges, all checked against the
   Roblox creator docs.
-- **14 tested scripts** (Python, numpy and Pillow, plus ffmpeg):
+- **23 tested scripts** (Python, numpy and Pillow, plus ffmpeg):
 
 | Script | Does |
 |---|---|
@@ -41,6 +43,14 @@ research → measure → document → translate → build → compare → fix
 | `measure_compare.py` | Compare in-game motion logs with reference targets |
 | `blender_roblox_export.py` | Check Roblox mesh and rig limits in Blender, then export |
 | `doctor.py` | Report which tools are available |
+| `remake_status.py` | Phase gates, open items, next action; writes `STATUS.md` |
+| `ledger.py` | Evidence and measurements with automatic IDs; tracker import; targets |
+| `config_check.py` | `Config.luau` values against their measurements (drift, missing sources, assumptions) |
+| `find_mover.py` / `frame_zoom.py` | Detect moving subjects and suggest tracking boxes; zoomed crops with pixel rulers |
+| `pose_track.py` | Multi-point tracking: 2D joint angles, cycle period, keypose table |
+| `overlay.py` | Blend, diff, checker, wipe and onion-skin views |
+| `studio_snippets.py` | Greybox and shot Luau for Studio/MCP, Output log cleanup, binding tables |
+| `preset.py` | Genre starting values, always labeled ASSUMED |
 
 - **A Rojo-ready Luau template** (`assets/rojo-template/`): evidence-tagged `Config`, a
   closed-form `Spring`, a `FixedStep` tick emulator, jump and acceleration feel (coyote time,
@@ -49,8 +59,10 @@ research → measure → document → translate → build → compare → fix
   haptics, VR support, a shot camera for matched captures, a measurement harness, and an input
   probe. It has 41 Lune unit tests and a Studio smoke test.
 - **Examples**: synthetic demo footage with ground truth and a one-command pipeline run;
-  walkthroughs for movement feel, HUD recreation and Quest 3; a complete sample breakdown; and
-  guardrail scenarios.
+  walkthroughs for movement feel, HUD recreation and Quest 3; a complete sample workspace
+  (breakdown plus measured `Config.luau`); and guardrail scenarios.
+- **Evals** (`evals/`): test prompts with expected behavior and a pattern grader, for measuring the
+  skill with and without it, as the Agent Skills evaluation guide recommends.
 
 ## Install
 
@@ -121,11 +133,13 @@ python -m unittest discover -s tests -v
 ```text
 skills/roblox-game-remaker/     the skill (copy this folder to install manually)
   SKILL.md                      workflow, rules, routing, toolbox
-  references/                   15 deep references, loaded on demand
+  references/                   16 references (incl. recipes), loaded on demand
   scripts/                      analysis and validation CLIs
   assets/templates/             remake/ workspace templates
-  assets/rojo-template/         Luau template, Lune tests, Studio smoke test
-  examples/                     demo footage generator, walkthroughs, sample breakdown
+  assets/rojo-template/         Luau template, Lune tests, Studio smoke test, offline lint config
+  assets/presets/               genre starting points (ASSUMED values)
+  examples/                     demo footage generator, walkthroughs, sample workspace
+  evals/                        eval prompts and grader
   agents/openai.yaml            Codex UI metadata
 .claude-plugin/marketplace.json Claude Code plugin marketplace
 tools/                          repo validators (spec, Roblox API cross-check)

@@ -15,7 +15,7 @@ compatibility: >-
   ffmpeg and ffprobe. Optional: Roblox Studio (built-in MCP server), Rojo, Lune, StyLua, Selene,
   Blender 4.x. Web research needs network access.
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   roblox-docs-snapshot: "Roblox/creator-docs 2026-11-03"
 ---
 
@@ -74,6 +74,7 @@ yourself:
 Run `python scripts/remake_status.py remake --write`. It evaluates every phase gate, lists open
 questions, assumptions and inaccessible sources, names the next action, and saves
 `remake/STATUS.md` as a handoff. Follow its next action, and run it again after each phase.
+For common tasks, [references/recipes.md](references/recipes.md) has exact command sequences.
 
 ## Workflow
 
@@ -129,6 +130,7 @@ gaps and why, engine limits, unverified items, the asset provenance manifest, an
 
 | Task | Read |
 |---|---|
+| A common task end to end (jump, movement, camera, HUD, lighting, animation, greybox, Quest 3) | [recipes](references/recipes.md) |
 | Finding sources, pinning versions, the capture guide for users | [research-protocol](references/research-protocol.md) |
 | Video probing, frame extraction, tracking, timing, UI and color sampling | [footage-analysis](references/footage-analysis.md) |
 | Poses, cycles, transitions, blend times, Animation Editor, rigs | [animation-analysis](references/animation-analysis.md) |
@@ -162,6 +164,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `pose_track.py frames/manifest.json --point hip=x,y ... --joint knee=hip,knee,foot --cycle foot.y` | Multi-point tracking: 2D joint angles, cycle period, keypose table draft |
 | `overlay.py blend\|diff\|checker\|wipe REF REC` / `overlay.py onion manifest.json` | Single-image alignment views; onion skin of a sequence |
 | `studio_snippets.py greybox\|shots\|apply-shot\|extract-log\|inputs` | Generate greybox and shot Luau for Studio/MCP; clean Output logs; binding tables from InputProbe |
+| `preset.py list\|show\|apply NAME --config Config.luau` | Genre starting values, written as `ASSUMED` and never over measured keys |
 | `breakdown_init.py PROJECT --game "Name"` | Create `remake/` from templates (never overwrites) |
 | `probe_video.py clip.mp4 --dupes` | FPS, variable frame rate, duplicate frames, effective update rate |
 | `extract_frames.py clip.mp4 --out frames/ --mode range --start 120 --end 180` | Exact frames with index and timestamp manifest (`all`, `every`, `range`, `times`, `scene`) |

@@ -174,3 +174,56 @@ class FrameToolTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PresetTests(unittest.TestCase):
+    def test_apply_keeps_measured_keys(self):
+        sample_cfg = SAMPLE / "src" / "shared" / "Remake" / "Config.luau"
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "Config.luau"
+            proc = run("preset.py", "apply", "platformer", "--config", sample_cfg, "--out", out)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("kept Movement.WalkSpeed (backed by MS-004)", proc.stdout)
+            text = out.read_text()
+            self.assertIn("WalkSpeed = 20, -- MS-004", text)
+            self.assertIn("AirControl = 0.75, -- ASSUMED preset platformer", text)
+            check = json.loads(run("config_check.py", SAMPLE / "remake", "--config", out, "--json").stdout)
+            self.assertEqual(check["error_count"], 0)
+            self.assertIn("Movement.AirControl", check["summary"]["assumptions"])
+
+    @unittest.skipUnless(shutil.which("lune"), "lune not installed")
+    def test_every_preset_yields_loadable_config(self):
+        presets = json.loads((SKILL / "assets" / "presets" / "presets.json").read_text())["presets"]
+        for name in presets:
+            with tempfile.TemporaryDirectory() as tmp:
+                out = Path(tmp) / "Config.luau"
+                self.assertEqual(run("preset.py", "apply", name, "--config", TEMPLATE_CONFIG, "--out", out).returncode, 0)
+                body = out.read_text().replace("--!strict", "").replace("return Config", "")
+                script = Path(tmp) / "load.luau"
+                script.write_text('local roblox = require("@lune/roblox")\n'
+                                  "local Vector3, Vector2, Color3 = roblox.Vector3, roblox.Vector2, roblox.Color3\n"
+                                  + body + "\nprint(Config.Camera.Mode, Config.Movement.WalkSpeed)\n")
+                proc = subprocess.run(["lune", "run", str(script)], capture_output=True, text=True, timeout=120)
+                self.assertEqual(proc.returncode, 0, f"{name}: {proc.stderr}")
+                self.assertEqual(proc.stdout.split()[0], presets[name]["values"].get("Camera.Mode", "Default"))
+
+    def test_unknown_preset(self):
+        self.assertEqual(run("preset.py", "show", "nope").returncode, 2)
+
+
+class EvalTests(unittest.TestCase):
+    def test_evals_file_and_grader(self):
+        data = json.loads((SKILL / "evals" / "evals.json").read_text())
+        self.assertEqual(data["skill_name"], "roblox-game-remaker")
+        ids = [e["id"] for e in data["evals"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        for e in data["evals"]:
+            self.assertTrue(e["prompt"] and e["expected_output"] and e["assertions"], e["name"])
+        with tempfile.TemporaryDirectory() as tmp:
+            good = Path(tmp) / "good.txt"
+            good.write_text("I couldn't access that video, so I haven't analyzed it.")
+            bad = Path(tmp) / "bad.txt"
+            bad.write_text("The apex is 8 studs.")
+            grader = [sys.executable, str(SKILL / "evals" / "grade.py")]
+            self.assertEqual(subprocess.run(grader + [str(good), "--eval", "2"], capture_output=True).returncode, 0)
+            self.assertEqual(subprocess.run(grader + [str(bad), "--eval", "2"], capture_output=True).returncode, 1)

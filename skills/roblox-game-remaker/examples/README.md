@@ -6,7 +6,7 @@
 | [01-movement-feel-walkthrough.md](01-movement-feel-walkthrough.md) | Footage → jump and run measurements → Roblox settings → harness verification |
 | [02-hud-recreation.md](02-hud-recreation.md) | Screenshot → UI boxes → UDim2 layout → UIScaler → visual and layout comparison |
 | [03-quest3-vr.md](03-quest3-vr.md) | Adding Meta Quest 3 support: input probe, bindings, haptics calibration, comfort, performance |
-| [04-sample-workspace/remake/](04-sample-workspace/remake/) | A complete `remake/` workspace (intake, evidence, measurements, breakdown, targets, shots) that passes `breakdown_check.py --strict` |
+| [04-sample-workspace/](04-sample-workspace/) | A complete workspace: `remake/` (intake, evidence, measurements, breakdown, targets, shots) that passes `breakdown_check.py --strict`, and a measured `src/shared/Remake/Config.luau` that passes `config_check.py --strict`. `remake_status.py` reports it at phase 6 (verify), honestly, because nothing has run in Studio |
 | [05-prompts-and-guardrails.md](05-prompts-and-guardrails.md) | Example requests and how the skill should respond, including inaccessible footage and asset-ripping requests |
 
 "Lantern Hop" in these examples is a fictional game invented for the samples. All footage is
