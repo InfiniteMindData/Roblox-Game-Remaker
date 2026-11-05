@@ -159,6 +159,9 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `config_check.py remake` | Config.luau values against their measurements; stale, unsourced and assumed values |
 | `find_mover.py frames/manifest.json` | Detect moving subjects (camera motion cancelled); suggest `--bbox` and `--anchor-bbox` |
 | `frame_zoom.py frame.png --region x,y,w,h --mark x,y,w,h` | Zoomed crop with pixel rulers to read and confirm exact coordinates |
+| `pose_track.py frames/manifest.json --point hip=x,y ... --joint knee=hip,knee,foot --cycle foot.y` | Multi-point tracking: 2D joint angles, cycle period, keypose table draft |
+| `overlay.py blend\|diff\|checker\|wipe REF REC` / `overlay.py onion manifest.json` | Single-image alignment views; onion skin of a sequence |
+| `studio_snippets.py greybox\|shots\|apply-shot\|extract-log\|inputs` | Generate greybox and shot Luau for Studio/MCP; clean Output logs; binding tables from InputProbe |
 | `breakdown_init.py PROJECT --game "Name"` | Create `remake/` from templates (never overwrites) |
 | `probe_video.py clip.mp4 --dupes` | FPS, variable frame rate, duplicate frames, effective update rate |
 | `extract_frames.py clip.mp4 --out frames/ --mode range --start 120 --end 180` | Exact frames with index and timestamp manifest (`all`, `every`, `range`, `times`, `scene`) |

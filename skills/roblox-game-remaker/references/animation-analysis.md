@@ -40,8 +40,22 @@ For each clip, mark **keyposes** with the classic breakdown:
 - attacks: anticipation, strike (first active frame), follow-through, recovery;
 - jumps: crouch, takeoff, rise, apex, fall, landing compression.
 
-For each keypose, open the full-resolution frame and estimate joint angles relative to the rest
-pose. Torso lean, hip and knee flexion, arm swing and head angle carry most of the read. Record
+Measure instead of estimating where the joints are visible: track hip, knee, foot (and any
+other joints) with `pose_track.py`, which gives per-frame 2D joint angles, the cycle period, and
+a keypose table draft:
+
+```bash
+python scripts/pose_track.py remake/frames/run01/manifest.json \
+  --point hip=412,300 --point knee=420,350 --point foot=414,398 \
+  --joint knee=hip,knee,foot --segment thigh=hip,knee --cycle foot.y \
+  --table remake/anim/run-keys.md --out remake/tracks/run-pose.json
+```
+
+Pick the points with `frame_zoom.py --point`. Use `overlay.py onion` on the cycle's frames to see
+the arcs and spacing at a glance.
+
+For joints you cannot track, open the full-resolution frame and estimate the angles relative to
+the rest pose. Torso lean, hip and knee flexion, arm swing and head angle carry most of the read. Record
 them in a pose table in the breakdown entry:
 
 ```text

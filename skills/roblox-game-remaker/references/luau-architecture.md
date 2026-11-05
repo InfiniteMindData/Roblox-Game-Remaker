@@ -102,7 +102,9 @@ end)
 
 - Start modules with `--!strict` where practical. The template's pure modules are strict.
 - Lint with `selene src` (`std = "roblox"` in `selene.toml`), and format and syntax-check with
-  `stylua --check src`.
+  `stylua --check src`. When Selene cannot download its Roblox library (offline or a restricted
+  network), use `selene --config selene.offline.toml src`: a Luau base plus Roblox globals that
+  still catches typos, unused variables and deprecated `wait`/`spawn`/`delay`.
 - Unit-test pure modules with Lune: `lune run tests/lune/run.luau`. These cover Units, Spring,
   FixedStep, StateMachine, MovementMath and Easing, and run without Studio.
 - Integration: `tests/studio/SmokeTest.luau` asserts that the config was applied. Run it with MCP

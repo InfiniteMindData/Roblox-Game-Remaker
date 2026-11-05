@@ -60,6 +60,9 @@ claim of "matches the original" points to a comparison artifact.
   re-measuring.
 - `side_by_side.png`, `heatmap.png` and `blink.gif`: open these when you can view images. The blink
   GIF alternates reference and recreation, which makes misalignment obvious.
+- For alignment work, `overlay.py` gives single images that are quicker to read: `blend` (ghosting
+  shows offsets), `checker` (edges that break across tiles are misaligned), `wipe` (a split line),
+  and `diff` (amplified difference).
 
 ## 4. Iteration discipline (`remake/diff-log.md`)
 

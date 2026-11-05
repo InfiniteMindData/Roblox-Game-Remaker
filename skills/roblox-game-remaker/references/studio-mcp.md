@@ -58,17 +58,20 @@ have.
    `script_grep` for existing systems. Never duplicate an existing controller.
 2. **Write code:** `multi_edit` into the paths from the template layout. If the project uses Rojo,
    edit the files on disk instead, because Rojo overwrites Studio-side edits of synced scripts.
-3. **Build geometry deterministically:** `execute_luau` (Edit) with scripts that create the greybox
-   from breakdown metrics (named Parts in a `Level_Greybox` folder), so builds are repeatable and
-   reviewable.
+3. **Build geometry deterministically:** write the level's metric layout as JSON and generate the
+   build script with `scripts/studio_snippets.py greybox layout.json --studs-per-meter X --out greybox.luau`.
+   Run it with `execute_luau` (Edit). It rebuilds `Workspace.Level_Greybox` each time, so builds are
+   repeatable and reviewable.
 4. **Playtest:** `start_stop_play` → `get_studio_state` (wait for play) → reproduce the reference
    test with `character_navigation`, `user_keyboard_input` (for example hold `W` for 1 s, then
    press `Space`) → `get_console_output` for harness lines → `start_stop_play` to stop.
-5. **Measure:** save the console output to `remake/logs/run-NN.log` and run
-   `scripts/measure_compare.py` on it.
+5. **Measure:** save the console output, clean it with
+   `scripts/studio_snippets.py extract-log console.txt --out remake/logs/run-NN.log` (it also
+   summarizes `REMAKE_SMOKE` results), and run `scripts/measure_compare.py` on it.
 6. **Capture shots:** `screen_capture` with the shot's camera position and look-at. For an exact
-   FOV and hidden UI, first run `execute_luau` (Client, during play) to call `ShotCamera.apply`,
-   then capture.
+   FOV and hidden UI, first run the snippet from `studio_snippets.py apply-shot remake/shots.json --id SHOT-03`
+   with `execute_luau` (Client, during play), then capture. `studio_snippets.py shots` generates the
+   `Shots` module for the F7/F8 hotkeys.
 7. **Compare:** save the capture as `remake/captures/<shot>.png`, then run `scripts/visual_compare.py`.
 8. **Assets:** `search_asset` and `insert_asset` only for assets the user has rights to use
    (their own inventory, or Creator Store assets whose terms permit it). Inspect inserted models'

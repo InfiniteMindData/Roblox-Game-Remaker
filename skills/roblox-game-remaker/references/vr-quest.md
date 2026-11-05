@@ -71,7 +71,8 @@ Typical mapping (**verify on device** with `DevTools/InputProbe`, which logs the
 | Menu | Reserved by the system and Roblox; do not bind |
 
 Run the probe, press every control, and save the Output as evidence (`EV-###`, type `capture`)
-before finalizing `CTRL`/`VR` entries. Threshold analog triggers with `InputBinding.PressedThreshold`
+before finalizing `CTRL`/`VR` entries. `scripts/studio_snippets.py inputs probe.log --out remake/ui/quest-bindings.md`
+turns the log into a binding table (KeyCode, input type, events, analog range). Threshold analog triggers with `InputBinding.PressedThreshold`
 and `ReleasedThreshold` to reproduce the original's half-pull and full-pull behavior.
 
 ## 5. Haptics (HapticEffect)

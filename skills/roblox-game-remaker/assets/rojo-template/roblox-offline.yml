@@ -1,0 +1,49 @@
+# Offline fallback for Selene when its full Roblox standard library cannot be downloaded.
+# Luau base plus the Roblox globals the template uses; it does not check Instance members.
+# Usage (from this folder): selene --config selene.offline.toml src
+---
+base: luau
+name: roblox-offline
+globals:
+  game: {any: true}
+  workspace: {any: true}
+  script: {any: true}
+  Enum: {any: true}
+  Instance: {any: true}
+  Vector3: {any: true}
+  Vector2: {any: true}
+  CFrame: {any: true}
+  Color3: {any: true}
+  UDim2: {any: true}
+  UDim: {any: true}
+  RaycastParams: {any: true}
+  Random: {any: true}
+  FloatCurveKey: {any: true}
+  task: {any: true}
+  warn: {args: [{type: "..."}]}
+  tick: {args: []}
+  typeof: {args: [{type: any}]}
+  TweenInfo: {any: true}
+  NumberSequence: {any: true}
+  NumberSequenceKeypoint: {any: true}
+  ColorSequence: {any: true}
+  ColorSequenceKeypoint: {any: true}
+  NumberRange: {any: true}
+  Rect: {any: true}
+  Ray: {any: true}
+  Region3: {any: true}
+  PhysicalProperties: {any: true}
+  Font: {any: true}
+  OverlapParams: {any: true}
+  BrickColor: {any: true}
+  DateTime: {any: true}
+  Axes: {any: true}
+  Faces: {any: true}
+  PathWaypoint: {any: true}
+  SharedTable: {any: true}
+  Content: {any: true}
+  shared: {any: true}
+  plugin: {any: true}
+  settings: {any: true}
+  UserSettings: {any: true}
+  DockWidgetPluginGuiInfo: {any: true}

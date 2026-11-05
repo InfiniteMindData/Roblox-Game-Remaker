@@ -1,0 +1,2 @@
+# Offline Selene config: see roblox-offline.yml. Prefer selene.toml (std = "roblox") when online.
+std = "roblox-offline"
