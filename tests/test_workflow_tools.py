@@ -227,3 +227,10 @@ class EvalTests(unittest.TestCase):
             grader = [sys.executable, str(SKILL / "evals" / "grade.py")]
             self.assertEqual(subprocess.run(grader + [str(good), "--eval", "2"], capture_output=True).returncode, 0)
             self.assertEqual(subprocess.run(grader + [str(bad), "--eval", "2"], capture_output=True).returncode, 1)
+
+
+class ProjectInstallTests(unittest.TestCase):
+    def test_project_skill_link_points_at_the_skill(self):
+        link = ROOT / ".claude" / "skills" / "roblox-game-remaker"
+        self.assertTrue((link / "SKILL.md").is_file(), "the .claude/skills link must resolve")
+        self.assertEqual(link.resolve(), SKILL.resolve())

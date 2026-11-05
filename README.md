@@ -86,6 +86,10 @@ Then install the script dependencies (and ffmpeg):
 pip install -r skills/roblox-game-remaker/scripts/requirements.txt
 ```
 
+**Working in this repo?** Nothing to install: `.claude/skills/roblox-game-remaker` links to the
+skill, so Claude Code loads it in every session started here (on Windows, clone with
+`git clone -c core.symlinks=true` so the link checks out as a link).
+
 Manual copy, Claude.ai upload, optional tools (Rojo, Lune, StyLua, Selene, Blender) and Studio
 MCP setup are covered in [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
