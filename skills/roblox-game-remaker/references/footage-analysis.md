@@ -74,6 +74,16 @@ windows.
 
 ## 5. Motion: positions, speeds, jumps
 
+Find and confirm the subject first instead of estimating coordinates from a full frame:
+
+```bash
+python scripts/find_mover.py remake/frames/jump01/manifest.json --preview remake/sheets/jump01-movers.png
+# -> candidate bbox (first-frame pixels), camera motion, and an --anchor-bbox when the camera pans
+python scripts/frame_zoom.py remake/frames/jump01/f000240_t4.000000.png --region 880,580,110,140 --mark 912,604,48,96 --out remake/sheets/check.png
+```
+
+Open the zoom and check that the box sits on the feature (rulers are in source-frame pixels).
+
 `motion_track.py` follows a template patch across frames with normalized cross-correlation.
 
 ```bash
@@ -148,7 +158,13 @@ and loudness relationships (loud versus quiet) qualitatively unless you calibrat
 
 ## 10. Recording measurements
 
-Append to `remake/measurements.json`:
+Import tracker results directly (IDs, uncertainty and frame range are filled in):
+
+```bash
+python scripts/ledger.py import-track remake remake/tracks/jump01.json --evidence EV-007
+```
+
+For other values use `ledger.py add-measurement`. The resulting entry looks like this:
 
 ```json
 {

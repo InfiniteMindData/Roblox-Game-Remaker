@@ -69,6 +69,12 @@ yourself:
 | Rojo project | `*.project.json` in the project | Offer `assets/rojo-template/`, or work in Studio directly |
 | Blender | `doctor.py` finds `blender` | Give the user the Blender steps and the export script to run |
 
+## Session start (every session)
+
+Run `python scripts/remake_status.py remake --write`. It evaluates every phase gate, lists open
+questions, assumptions and inaccessible sources, names the next action, and saves
+`remake/STATUS.md` as a handoff. Follow its next action, and run it again after each phase.
+
 ## Workflow
 
 Each phase ends with a gate. Do not start Phase 5 on a system whose breakdown entry is missing.
@@ -79,14 +85,16 @@ game, version or patch, and platform; reference media the user can supply; right
 multiplayer needs; fidelity tier. *Gate: rights mode and scope recorded.*
 
 **Phase 1: Research.** Follow [references/research-protocol.md](references/research-protocol.md).
-Record every source in `remake/evidence.json`, including the ones you could not access. Pin the
+Record every source with `scripts/ledger.py add-evidence`, including the ones you could not
+access (`--inaccessible`). Never hand-edit IDs. Pin the
 game version, because values change between patches. *Gate: each core category has sources or a
 listed gap.*
 
 **Phase 2: Footage analysis.** Follow [references/footage-analysis.md](references/footage-analysis.md)
 and [references/animation-analysis.md](references/animation-analysis.md). Probe the video first:
-duplicate frames change your timing precision. Extract frames, build contact sheets, track
-motion, and measure timings, UI and colors. *Gate: `remake/measurements.json` and
+duplicate frames change your timing precision. Extract frames, build contact sheets, find the
+subject with `find_mover.py`, confirm boxes with `frame_zoom.py --mark`, track with
+`motion_track.py`, and import results with `ledger.py import-track`. *Gate: `remake/measurements.json` and
 `remake/shots.json` exist, and each value has a method and an uncertainty.*
 
 **Phase 3: Breakdown.** Write `remake/breakdown.md` using
@@ -99,14 +107,15 @@ questions and assumptions. *Gate: the checker passes, or the user accepts the li
 **Phase 4: Translation plan.** Map each entry to Roblox using
 [references/roblox-translation.md](references/roblox-translation.md): units, gravity, FOV
 convention, tick rate, input, rendering limits. Convert numbers with `scripts/remake_calc.py`.
-Write tolerances into each acceptance test.
+Write tolerances into each acceptance test, and generate `targets.json` with
+`ledger.py targets remake --tier A`.
 
 **Phase 5: Build.** Work in this order, verifying each step before the next: (1) greybox with
 correct scale, physics, movement and camera; (2) controls on every target device; (3) characters
 and animation; (4) environment, lighting and materials; (5) UI; (6) VFX and audio; (7) game
 systems, progression and data; (8) VR; (9) performance and polish. Start from
 `assets/rojo-template/`, which puts every measured constant in one evidence-tagged `Config`
-module.
+module, and run `scripts/config_check.py remake` after every Config change.
 
 **Phase 6: Verify and fix (loop).** Follow [references/verification-loop.md](references/verification-loop.md).
 Capture matched shots and compare them with `scripts/visual_compare.py`. Log motion with the
@@ -145,6 +154,11 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | Script | Use |
 |---|---|
 | `doctor.py` | Report available tools and the working mode |
+| `remake_status.py remake --write` | Phase gates, open items, next action; writes `remake/STATUS.md` |
+| `ledger.py add-evidence / add-measurement / import-track / targets` | Ledger entries with automatic IDs and checks; tracker output to measurements; targets |
+| `config_check.py remake` | Config.luau values against their measurements; stale, unsourced and assumed values |
+| `find_mover.py frames/manifest.json` | Detect moving subjects (camera motion cancelled); suggest `--bbox` and `--anchor-bbox` |
+| `frame_zoom.py frame.png --region x,y,w,h --mark x,y,w,h` | Zoomed crop with pixel rulers to read and confirm exact coordinates |
 | `breakdown_init.py PROJECT --game "Name"` | Create `remake/` from templates (never overwrites) |
 | `probe_video.py clip.mp4 --dupes` | FPS, variable frame rate, duplicate frames, effective update rate |
 | `extract_frames.py clip.mp4 --out frames/ --mode range --start 120 --end 180` | Exact frames with index and timestamp manifest (`all`, `every`, `range`, `times`, `scene`) |

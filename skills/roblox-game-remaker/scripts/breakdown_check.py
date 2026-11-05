@@ -234,6 +234,21 @@ def check_entries(entries, na, ev, ms, path: Path, report: Report) -> dict:
             "open_questions": questions, "assumptions": assumptions}
 
 
+def check_workspace(root: Path, bpath: Path | None = None) -> dict:
+    """Run every check on a remake/ workspace; returns errors, warnings and the summary."""
+    bpath = bpath or root / "breakdown.md"
+    report = Report(None)
+    ev = load_ledger(root / "evidence.json", "evidence", report)
+    ms = load_ledger(root / "measurements.json", "measurements", report)
+    check_ledgers(ev, ms, root / "evidence.json", root / "measurements.json", report)
+    entries, na = parse_breakdown(bpath, report)
+    if not entries:
+        report.add("ERROR", bpath, 0, "no entries found", "add '### PREFIX-001: Title' entries (see game-breakdown.md)")
+    summary = check_entries(entries, na, ev, ms, bpath, report)
+    return {"errors": report.errors, "warnings": report.warnings, "summary": summary, "entries": entries,
+            "evidence": ev, "measurements": ms}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("target", type=Path, help="remake/ directory or its breakdown.md")
@@ -254,14 +269,10 @@ def main() -> int:
         print(f"error: {bpath} not found (run breakdown_init.py first)", file=sys.stderr)
         return rc.EXIT_USAGE
 
+    result = check_workspace(root, bpath)
     report = Report(args.max_issues)
-    ev = load_ledger(root / "evidence.json", "evidence", report)
-    ms = load_ledger(root / "measurements.json", "measurements", report)
-    check_ledgers(ev, ms, root / "evidence.json", root / "measurements.json", report)
-    entries, na = parse_breakdown(bpath, report)
-    if not entries:
-        report.add("ERROR", bpath, 0, "no entries found", "add '### PREFIX-001: Title' entries (see game-breakdown.md)")
-    summary = check_entries(entries, na, ev, ms, bpath, report)
+    report.errors, report.warnings = result["errors"], result["warnings"]
+    summary = result["summary"]
     failed = bool(report.errors) or (args.strict and bool(report.warnings))
     files = [str(p) for p in (bpath, root / "evidence.json", root / "measurements.json") if p.is_file()]
 

@@ -275,7 +275,12 @@ def analyze_speed(t, u, unit: str, px_unit: float, fps: float) -> dict:
     if len(t) - k < 8:
         rc.fail("too few samples after motion starts; extract more frames", rc.EXIT_FAIL)
     tail = max(4, int((len(t) - k) * 0.4))
-    V, _ = np.polyfit(t[-tail:], s[-tail:], 1)
+    if tail >= 4:
+        (V, _), vcov = np.polyfit(t[-tail:], s[-tail:], 1, cov=True)
+        v_std = float(np.sqrt(max(vcov[0, 0], 0.0)))
+    else:
+        V, _ = np.polyfit(t[-tail:], s[-tail:], 1)
+        v_std = 0.0
     V = float(V)
     if V <= 0:
         rc.fail("could not fit a positive steady speed", rc.EXIT_FAIL)
@@ -295,6 +300,7 @@ def analyze_speed(t, u, unit: str, px_unit: float, fps: float) -> dict:
         "first_moving_sample": k,
         "motion_start_s": round(t_start, 4),
         "steady_speed": round(V, 4),
+        "steady_speed_std": round(v_std, 5),
         "t90_s": round(t90_model, 4),
         "t90_from_samples_s": round(t90_samples, 4) if t90_samples is not None else None,
         "linear_ramp": {"start_s": round(lin_ts, 4), "time_to_full_s": round(lin_T, 4),
