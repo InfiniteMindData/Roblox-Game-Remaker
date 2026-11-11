@@ -47,25 +47,68 @@ their content was read from the official GitHub sources above, which publish the
 - IP licensing: Roblox's license catalog and the Terms of Use statement on using others' IP.
 - Animation Capture (Body): a single person, a continuous shot under 15 s, a stable camera.
 
+## Facts added in 1.2.0
+
+Checked in the engine API reference YAML of the creator-docs snapshot of 2026-11-10 (commit
+`7cbffff`). The Markdown guides behind the facts above were not re-read for this release.
+
+- `Enum.EasingStyle` items Linear, Sine, Back, Quad, Quart, Quint, Bounce, Elastic, Exponential,
+  Circular, Cubic (the names `Easing.luau` and `fit_curve.py` use); `Enum.EasingDirection` In,
+  Out, InOut; `TweenInfo.new(time, easingStyle, easingDirection, repeatCount, reverses,
+  delayTime)` with defaults 1, Quad, Out. Discrepancy left as found: `TweenService:GetValue`
+  mentions `EasingStyle.Bezier` and `EasingStyle.Spring`, which the enum page does not list; the
+  skill does not use them.
+- `Random.new(seed)`, `Random:NextNumber`, `Random:NextInteger`.
+- Audio: `Sound.PlaybackSpeed` raises pitch and speed together; `Sound.Pitch` is deprecated;
+  `Sound.Volume` is 0 to 10, default 0.5, with no stated scale (the skill says to re-measure
+  after changing it); `AudioPlayer.Volume` is a multiplier on the output stream, 0 to 10;
+  `AudioPlayer.PlaybackSpeed` 0 to 20; `AudioPitchShifter.Pitch` multiplies pitch, 0.5 to 2.
+- Input timing: `RunService.PreRender` fires every frame before the frame is rendered;
+  `UserInputService.InputBegan`, `Humanoid:GetState` and `Humanoid.StateChanged` are current.
+
 ## Automated checks (all passing at release)
 
 | Check | Tool | Result |
 |---|---|---|
 | Agent Skills spec | `agentskills validate skills/roblox-game-remaker` | Valid skill |
 | Repo rules and links | `tools/validate_skill.py --strict --run-help` | 0 errors, 0 warnings |
-| Roblox API names in all Luau and Markdown | `tools/check_roblox_api.py` against 629 classes and 520 enums | 0 errors, 0 warnings |
-| Python scripts | `python -m unittest discover -s tests` (56 tests) | Pass |
-| Measurement accuracy | Synthetic footage with ground truth | Jump apex 8.005 (8), rise 0.4015 s (0.400), fall 0.2835 s (0.2828), gravities 99.4/199.0 (100/200); run 19.996 studs/s (20), ramp 0.252 s (0.250) through a panning camera |
+| Roblox API names in all Luau and Markdown | `tools/check_roblox_api.py` against 629 classes and 521 enums (snapshot 2026-11-10) | 0 errors, 0 warnings (64 files) |
+| Python scripts | `python -m unittest discover -s tests` (110 tests; 6 skip without Lune, StyLua, Selene or Rojo, and 2 without the API docs path, which passed when it was set) | Pass |
+| Measurement accuracy | Synthetic footage with ground truth | Jump apex 8.006 (8), rise 0.402 s (0.400), fall 0.284 s (0.283), gravities 99.2/198.9 (100/200); run 19.996 studs/s (20), t90 0.227 s (0.225) through a panning camera |
 | Color science | CIEDE2000 against Sharma et al. (2005) test pairs | Exact to 4 decimals |
-| Luau formatting and syntax | StyLua 2.6 | Clean |
-| Luau lint | Selene 0.31 with the bundled offline std (`selene.offline.toml`; the full Roblox std could not be downloaded in the build environment) | 0 errors, 0 warnings; flags deprecated `wait`/`spawn` |
-| Luau unit tests | Lune 0.11 (41 tests: Units, Spring, FixedStep, StateMachine, MovementMath, Easing, UIScaler) | Pass |
-| Place build | Rojo 7.7, hierarchy inspected with Lune's Roblox library | Builds; 27 instances in the intended services |
+| Luau formatting and syntax | StyLua 2.6 | Clean at 1.1.0. Not re-run for 1.2.0 (see below) |
+| Luau lint | Selene 0.31 with the bundled offline std (`selene.offline.toml`; the full Roblox std could not be downloaded in the build environment) | 0 errors, 0 warnings at 1.1.0; flags deprecated `wait`/`spawn`. Not re-run for 1.2.0 |
+| Luau unit tests | Lune 0.11 (41 tests: Units, Spring, FixedStep, StateMachine, MovementMath, Easing, UIScaler) | Pass at 1.1.0. Not re-run for 1.2.0 |
+| Place build | Rojo 7.7, hierarchy inspected with Lune's Roblox library | Builds; 27 instances at 1.1.0. Not re-run for 1.2.0 |
 | Subject detection | `find_mover.py` on the demo clips | Boxes overlap the true sprite boxes with IoU > 0.7 (static and panning camera); the suggested command reproduces the hand-picked measurements |
 | Pose tracking | `pose_track.py` on a synthetic leg with known angles | Thigh angle within 0.3°, knee within 0.7°, cycle period 29.9 frames (true 30) |
 | Generated Studio code | `studio_snippets.py greybox` output executed in Lune's Roblox DataModel | Correct sizes and positions in studs; re-running rebuilds instead of duplicating |
 | Presets | Every preset applied to the template and loaded in Lune | Valid Luau; measured keys are never overwritten |
-| Whole workflow | `tests/test_end_to_end.py`: init → evidence → probe/extract/find_mover/track → import → breakdown → targets → preset + measured Config → greybox → harness log → comparisons → delivery | Every phase gate advances as expected |
+| Whole workflow | `tests/test_end_to_end.py`: init → evidence → probe/extract/find_mover/track → import → breakdown → targets → preset + measured Config → greybox → harness log → comparisons → `fidelity_report` → delivery | Every phase gate advances as expected |
+
+The 1.2.0 build environment could not run StyLua, Selene, Lune or Rojo (running downloaded
+release binaries was not permitted there). The only Luau change in 1.2.0 is the
+MeasurementHarness latency mode and three `Config.DevTools` keys; they passed the API
+cross-check only. CI runs all four tools on push.
+
+## New tools in 1.2.0: accuracy on synthetic input
+
+| Tool | Test input | Result (truth) |
+|---|---|---|
+| `camera_solve.py vanishing` | Projected lines from a known camera (exact marks) | vFOV 70.000° (70), pitch −20.000° (−20), roll −3.000°, height 10.000 (10) |
+| `camera_solve.py vanishing` | Whole-pixel marks, two cameras | vFOV and pitch within 2× the reported ±1 px uncertainty |
+| `camera_solve.py` on the rendered third-person clip | Floor-square edges marked to whole pixels | vFOV 59.81 ± 1.67° (60), pitch −35.01 ± 0.80° (−35), height 9.03 ± 0.20 (9) |
+| `camera_solve.py ground` | Projected track of a diagonal run | 12.0005 ± 0.11 studs/s (12), t90 0.270 s (0.270), ground point (10.000, 10.000) |
+| `motion_track --scale-search` + `camera_solve ground` | Rendered third-person clip | 9.993 ± 0.215 studs/s (10), t90 0.275 s (0.270) |
+| `camera_solve.py size` | 300 px span, 5 studs at 20 | focal 1200.000 px (exact) |
+| `clip_compare.py` | 60 fps reference vs 30 fps recreation, analytic curves | Motion start 0.2013 / 0.7002 s (0.2 / 0.7); rms 0.978 (analytic 0.960, floor 0.333); speed_90 offset 0.050 ± 0.037 s (0.045) |
+| `fit_curve.py` | 60 fps tweens, 0.15 px noise | Quad Out, Back Out, Sine InOut, Elastic Out, Bounce Out, Cubic In, Linear identified; durations within 0.0002 s of 0.400; spring ω 12.019 (12), ζ 0.600 (0.6) |
+| `fit_curve.py` | Sine Out at 10 fps, 2 px noise | Flagged not distinguishable from Quad Out; truth always the best fit or listed as equal |
+| `event_stats.py` | Clopper-Pearson, Student t, Wilson | 3 of 20: 0.03207094–0.37892683 (R `binom.test`); t(0.975; 2, 9, 30) to 6 decimals |
+| `event_stats.py` | Synthetic event table | Fixed 2.5 s spawn timer exact; 6 of 40 drops interval exact; state dwell 0.400 / 0.200 s exact; XP ratio 1.15 within 0.001 |
+| `audio_compare.py` | Tone bursts and a chirp | Duration 0.2493 s (0.25), 439.89 Hz (440), centroid 440.0 / 660.0 Hz; replacement +3.02 dB (3), ×1.201 (1.2), +101 cents (100); chirp tracked within 1% |
+| `fidelity_report.py` | Two scripted iterations | Regressions in a shot and a clip detected; exit 1; diff-log entry and scorecard written |
+| `measure_compare` input latency, `event_stats --latency` | Synthetic harness log and overlay table | Means exact; timeouts counted, not averaged |
 
 ## Degraded footage (1.2.0)
 
@@ -115,8 +158,9 @@ logic), `audio_onsets`, and `camera_solve` with compressed third-person footage.
 
 ## Not measured yet
 
-- The skill evals in `skills/roblox-game-remaker/evals/` have not been run with and without the
-  skill. Run them before and after changing the instructions.
+- The skill evals in `skills/roblox-game-remaker/evals/` (19 cases) have not been run with and
+  without the skill. Run them before and after changing the instructions. `tests/test_evals.py`
+  only checks that the cases, their inputs and their pattern checks are consistent.
 
 ## Not verified (needs Roblox Studio or hardware)
 

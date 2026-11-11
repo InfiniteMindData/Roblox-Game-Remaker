@@ -20,13 +20,14 @@ research → measure → document → translate → build → compare → fix
   breakdown, translation, build, a verify-and-fix loop, and delivery, plus honesty rules (it never
   claims to have analyzed footage it could not open).
 - **Session continuity**: `remake_status.py` evaluates every gate, names the next action, and
-  writes `remake/STATUS.md`, so work resumes correctly in a new session or after context resets.
-- **16 focused references**, including **recipes** with exact command sequences for common tasks: footage analysis, animation analysis, the breakdown spec, engine-to-Roblox
+  writes `remake/STATUS.md`; `fidelity_report.py` keeps a per-iteration scorecard and history and
+  flags regressions, so work resumes correctly in a new session or after context resets.
+- **17 focused references**, including **recipes** with exact command sequences for common tasks: footage analysis, animation analysis, systems analysis (enemies, spawns, drops, economy), the breakdown spec, engine-to-Roblox
   translation (units, FOV conventions, tick rates, rendering limits), movement and camera feel,
   graphics and lighting matching, UI recreation, the Blender pipeline, VR and Meta Quest 3, the
   Studio MCP and CLI, verification, rights and policy, and sharp edges, all checked against the
   Roblox creator docs.
-- **23 tested scripts** (Python, numpy and Pillow, plus ffmpeg):
+- **29 tested scripts** (Python, numpy and Pillow, plus ffmpeg):
 
 | Script | Does |
 |---|---|
@@ -64,11 +65,12 @@ research → measure → document → translate → build → compare → fix
   animation driver with cadence matching, a reference-resolution UI scaler, `HapticEffect`
   haptics, VR support, a shot camera for matched captures, a measurement harness, and an input
   probe. It has 41 Lune unit tests and a Studio smoke test.
-- **Examples**: synthetic demo footage with ground truth and a one-command pipeline run;
+- **Examples**: synthetic demo footage with ground truth (side-on, third-person, and degraded
+  the way real captures are) and a one-command pipeline run;
   walkthroughs for movement feel, HUD recreation and Quest 3; a complete sample workspace
   (breakdown plus measured `Config.luau`); and guardrail scenarios.
-- **Evals** (`evals/`): test prompts with expected behavior and a pattern grader, for measuring the
-  skill with and without it, as the Agent Skills evaluation guide recommends.
+- **Evals** (`evals/`): 19 test prompts with expected behavior and a pattern grader, for measuring
+  the skill with and without it, as the Agent Skills evaluation guide recommends.
 
 ## Install
 
@@ -108,6 +110,8 @@ Ask in plain language, for example:
 - "Recreate this HUD from `hud.png` and make it scale like the original."
 - "Add Meta Quest 3 support to the remake, with haptics."
 - "Compare my Roblox screenshot with the reference frame and tell me what to fix."
+- "This is third-person footage; how fast does the character run, and what FOV is the camera?"
+- "We saw the rare drop 3 times in 20 kills. What rate do I use?"
 
 Try the pipeline on synthetic footage with known answers:
 
@@ -128,8 +132,8 @@ never extracts assets from game files. See
 
 CI runs the official Agent Skills validator, a repository validator, a Roblox API cross-check
 of every Luau and Markdown file against the engine API reference, the Python test suite (which
-checks measurements against synthetic ground truth), and StyLua, Selene, Lune and Rojo on the
-template. What was and was not verified is listed in [docs/VERIFICATION.md](docs/VERIFICATION.md).
+checks measurements against synthetic ground truth, including compressed, blurred, low-rate,
+variable-rate and HUD-covered footage), and StyLua, Selene, Lune and Rojo on the template. What was and was not verified is listed in [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 ```bash
 pip install -r requirements-dev.txt
@@ -143,7 +147,7 @@ python -m unittest discover -s tests -v
 ```text
 skills/roblox-game-remaker/     the skill (copy this folder to install manually)
   SKILL.md                      workflow, rules, routing, toolbox
-  references/                   16 references (incl. recipes), loaded on demand
+  references/                   17 references (incl. recipes), loaded on demand
   scripts/                      analysis and validation CLIs
   assets/templates/             remake/ workspace templates
   assets/rojo-template/         Luau template, Lune tests, Studio smoke test, offline lint config

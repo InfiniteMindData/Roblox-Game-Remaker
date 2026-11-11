@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.2.0 — unreleased
+## 1.2.0 — 2026-11-11
 
-Measurement beyond side-on 2D footage.
+Measurement beyond side-on 2D footage, and honesty under real-world footage.
 
 - `camera_solve.py`: vertical FOV, pitch, roll and camera height from vanishing lines or a known
   object, and a ground-plane homography that converts third-person `motion_track` output to
@@ -51,6 +51,9 @@ Measurement beyond side-on 2D footage.
   latency without a visible input, a regression check, and a second prompt that should not
   trigger the skill. `make_demo_footage.py --only extras` writes their small inputs, and
   `tests/test_evals.py` keeps the cases, inputs and pattern checks consistent with the tools.
+- `SKILL.md`: a short "Long sessions" section (the workspace is the memory; delegate bulk frame
+  review to subagents that return numbers, not images), and table rows for the new scripts and
+  reference. Version 1.2.0.
 - `remake_common.line_plot`: Pillow line charts shared by the new tools.
 - `ledger.py import`: imports any tool's `measurements` block (the new tools all write one);
   camera and other Config inputs never become harness targets.

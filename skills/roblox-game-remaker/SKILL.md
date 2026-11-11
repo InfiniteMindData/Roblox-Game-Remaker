@@ -15,7 +15,7 @@ compatibility: >-
   ffmpeg and ffprobe. Optional: Roblox Studio (built-in MCP server), Rojo, Lune, StyLua, Selene,
   Blender 4.x. Web research needs network access.
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   roblox-docs-snapshot: "Roblox/creator-docs 2026-11-03"
 ---
 
@@ -75,6 +75,22 @@ Run `python scripts/remake_status.py remake --write`. It evaluates every phase g
 questions, assumptions and inaccessible sources, names the next action, and saves
 `remake/STATUS.md` as a handoff. Follow its next action, and run it again after each phase.
 For common tasks, [references/recipes.md](references/recipes.md) has exact command sequences.
+
+## Long sessions
+
+A remake outlasts any one context window. Keep it manageable:
+
+- **The workspace is the memory, not the conversation.** `remake/STATUS.md`, the ledgers
+  (`evidence.json`, `measurements.json`), `history.jsonl` and `scorecard.md` carry the state
+  between sessions. Read them at the start; write every number to them when you measure it, never
+  only into chat. Run `remake_status.py --write` and `fidelity_report.py` before you stop.
+- **Delegate bulk frame review.** Stepping through hundreds of frames, logging event tables, or
+  checking boxes across many clips can go to subagents when the client supports them. Ask them to
+  return numbers (frame indexes, boxes, CSV rows, paths to tool JSON), not images, so the main
+  thread stays small. Spot-check one cited frame yourself before you rely on the batch.
+- **Open images sparingly.** Open a frame to confirm a box, a keypose or a mismatch; otherwise
+  work from the tools' JSON output.
+- **One system per iteration**, scored before the next change, so a regression points at its cause.
 
 ## Workflow
 

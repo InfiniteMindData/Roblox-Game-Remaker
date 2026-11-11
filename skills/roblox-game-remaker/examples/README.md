@@ -2,7 +2,7 @@
 
 | Example | Shows |
 |---|---|
-| [demo/](demo/) | Synthetic footage with known ground truth, and `run_demo.sh`, which runs the whole measurement pipeline on it. Start here to check your install |
+| [demo/](demo/) | Synthetic footage with known ground truth, and `run_demo.sh`, which runs the whole measurement pipeline on it (side-on jump and run, a third-person clip solved with `camera_solve.py`, HUD comparison). `make_demo_footage.py --only degraded` adds the same clips compressed, blurred, at 30 fps in 60, at a variable frame rate and under a HUD; `--only extras` writes the eval inputs (a tracked UI tween, a build's harness log, two sounds). Start here to check your install |
 | [01-movement-feel-walkthrough.md](01-movement-feel-walkthrough.md) | Footage → jump and run measurements → Roblox settings → harness verification |
 | [02-hud-recreation.md](02-hud-recreation.md) | Screenshot → UI boxes → UDim2 layout → UIScaler → visual and layout comparison |
 | [03-quest3-vr.md](03-quest3-vr.md) | Adding Meta Quest 3 support: input probe, bindings, haptics calibration, comfort, performance |
