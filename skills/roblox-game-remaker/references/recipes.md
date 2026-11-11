@@ -265,3 +265,17 @@ Write rates as intervals in the breakdown and tell the user how many more trials
 them (`trials_needed`). Done when every `AI`/`SYS` timer, rate and state in the slice cites an
 `MS` ID, and each wide interval is either narrowed with more footage or flagged `ASSUMED`.
 
+## 18. Match a sound effect with an original or licensed replacement
+
+```bash
+python scripts/audio_onsets.py clip.mp4 --fps 60 --start 12 --end 14
+python scripts/audio_compare.py analyze clip.mp4 --start <onset - 0.05> --end <onset + 0.6> --out remake/audio/jump-ref.json --plot remake/audio/jump-ref.png
+python scripts/audio_compare.py compare clip.mp4 remake/audio/jump-new.wav --ref-start <onset - 0.05> --ref-end <onset + 0.6> --plot remake/audio/jump-cmp.png
+```
+
+The replacement is your own or licensed sound (`rights-and-policy.md`); the tool tunes it, it does
+not copy the reference. Apply the hints (edit the attack and decay for envelope shape, then
+`PlaybackSpeed` or `AudioPitchShifter.Pitch` for pitch, `AudioPlayer.Volume` for level), export,
+and compare again. Done when `audio_compare compare` exits 0, or the remaining differences are
+listed as intentional in the `AUD` entry.
+

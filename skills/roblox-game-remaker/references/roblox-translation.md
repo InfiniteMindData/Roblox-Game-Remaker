@@ -121,7 +121,11 @@ record the gap.
   `Wire`s, plus effects such as `AudioEqualizer`, `AudioReverb` and `AudioCompressor`) for mixing
   fidelity. `Sound` with `SoundGroup` remains valid for simple cases.
 - Time cues to animation markers, not to `task.wait`.
-- Use original, licensed, or Roblox-provided audio only (see `rights-and-policy.md`).
+- Use original, licensed, or Roblox-provided audio only (see `rights-and-policy.md`). Tune the
+  replacement against the reference segment with `audio_compare.py compare`: `PlaybackSpeed`
+  changes pitch and length together; `AudioPitchShifter.Pitch` (0.5 to 2) changes pitch alone;
+  `AudioPlayer.Volume` multiplies the stream, so a dB difference converts directly, while for
+  `Sound.Volume` change the value and re-measure.
 
 ## 8. Multiplayer and authority
 

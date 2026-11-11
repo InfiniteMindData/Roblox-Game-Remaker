@@ -37,6 +37,10 @@ Measurement beyond side-on 2D footage.
   frame quantization (fixed versus variable, cooldown upper bounds), rates as exact
   Clopper-Pearson and Wilson intervals with the trials needed to narrow them (3 of 20 is
   0.032–0.379, never "15%"), state transitions and dwell times, and progression curve fits.
+- `audio_compare.py`: duration, loudness envelope, RMS and peak level, dominant frequency over
+  time and spectral centroid of a clip segment (numpy FFT), and a compare mode that scores an
+  original or licensed replacement on level, duration, envelope shape, pitch and brightness, with
+  hints in Roblox terms (`PlaybackSpeed`, `AudioPitchShifter.Pitch`, `AudioPlayer.Volume`).
 - `remake_common.line_plot`: Pillow line charts shared by the new tools.
 - `ledger.py import`: imports any tool's `measurements` block (the new tools all write one);
   camera and other Config inputs never become harness targets.

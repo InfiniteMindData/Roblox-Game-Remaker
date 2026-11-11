@@ -201,8 +201,18 @@ python scripts/audio_onsets.py clip.mp4 --fps 60 --out remake/audio/clip-onsets.
 ```
 
 This gives onset times and the nearest frame index. Use it to align footsteps with animation
-contact frames, hit sounds with active frames, and UI sounds with tweens. Record cue durations
-and loudness relationships (loud versus quiet) qualitatively unless you calibrate them.
+contact frames, hit sounds with active frames, and UI sounds with tweens.
+
+To describe one sound, cut its segment around an onset:
+
+```bash
+python scripts/audio_compare.py analyze clip.mp4 --start 12.40 --end 12.90 --plot remake/audio/jump-ref.png --out remake/audio/jump-ref.json
+```
+
+It reports duration, RMS level and peak (dBFS), the loudness envelope, the dominant frequency
+over time and the spectral centroid (brightness). Levels are relative to that recording's mix:
+compare sounds from the same capture with each other, not with absolute loudness. Music under the
+effect masks it; prefer clips with music turned down.
 
 ## 10. Recording measurements
 

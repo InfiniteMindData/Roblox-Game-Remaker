@@ -14,6 +14,7 @@ claim of "matches the original" points to a comparison artifact.
 | Animation | Keypose frames | Frozen-pose captures | `contact_sheet.py` side by side, `visual_compare.py --edges-only` | Frame error, silhouette IoU |
 | Timing (UI, abilities, VFX) | Frame ranges | Harness or markers | `remake_calc.py frames` | ± frames |
 | Audio sync | `audio_onsets.py` on reference | Same on a recording of the recreation | Diff of onset times | ms |
+| Sound match (replacement assets) | `audio_compare.py analyze` segment | The original or licensed replacement file | `audio_compare.py compare` | dB, duration ratio, cents, brightness ratio |
 
 ## 2. Shot list (`remake/shots.json`)
 

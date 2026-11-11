@@ -186,6 +186,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `ui_measure.py boxes.json --luau` | Pixel boxes to UDim2 scale, AnchorPoint and aspect ratio |
 | `event_stats.py events.csv --fps 60 --intervals spawn --rate drop/kill` | Event tables: intervals with spread, binomial rate intervals (never a bare %), state machines, progression curves |
 | `audio_onsets.py clip.mp4` | Sound onset times mapped to video frames |
+| `audio_compare.py analyze\|compare` | Duration, loudness envelope, dominant frequency and brightness of a sound; score an original or licensed replacement against it, with Roblox tuning hints |
 | `breakdown_check.py remake --strict` | Validate breakdown coverage, evidence links and statuses |
 | `measure_compare.py output.log --targets remake/targets.json` | Compare in-game measurements with reference targets |
 | `clip_compare.py ref-track.json rec.log --targets remake/targets.json --plot clip.png` | Align a build recording (track or harness log) with the reference clip; position error over time, event offsets, overlay plot |

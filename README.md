@@ -42,6 +42,7 @@ research → measure → document → translate → build → compare → fix
 | `ui_measure.py` | Pixel boxes to `AnchorPoint`/`UDim2`, Luau layout output, layout diffing |
 | `event_stats.py` | Event tables from footage: intervals with spread, exact binomial rate intervals, state machines, progression curves |
 | `audio_onsets.py` | Sound onsets mapped to video frames |
+| `audio_compare.py` | Duration, loudness envelope, dominant frequency and brightness of a sound; score a replacement against it with Roblox tuning hints |
 | `breakdown_init.py` / `breakdown_check.py` | Create and validate the evidence-backed breakdown |
 | `measure_compare.py` | Compare in-game motion logs with reference targets |
 | `clip_compare.py` | Compare a build recording or harness log with the reference clip over time: aligned position error, event offsets, overlay plot |
