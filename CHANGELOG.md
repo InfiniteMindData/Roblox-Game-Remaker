@@ -54,6 +54,8 @@ Measurement beyond side-on 2D footage, and honesty under real-world footage.
 - `SKILL.md`: a short "Long sessions" section (the workspace is the memory; delegate bulk frame
   review to subagents that return numbers, not images), and table rows for the new scripts and
   reference. Version 1.2.0.
+- CI: the Selene warning in `InputProbe.luau` and the Python 3.10 job (which could not install
+  `skills-ref` and never ran the tests) are fixed; all three jobs pass.
 - `remake_common.line_plot`: Pillow line charts shared by the new tools.
 - `ledger.py import`: imports any tool's `measurements` block (the new tools all write one);
   camera and other Config inputs never become harness targets.

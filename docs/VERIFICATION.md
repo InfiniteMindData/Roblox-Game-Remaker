@@ -76,20 +76,22 @@ Checked in the engine API reference YAML of the creator-docs snapshot of 2026-11
 | Python scripts | `python -m unittest discover -s tests` (110 tests; 6 skip without Lune, StyLua, Selene or Rojo, and 2 without the API docs path, which passed when it was set) | Pass |
 | Measurement accuracy | Synthetic footage with ground truth | Jump apex 8.006 (8), rise 0.402 s (0.400), fall 0.284 s (0.283), gravities 99.2/198.9 (100/200); run 19.996 studs/s (20), t90 0.227 s (0.225) through a panning camera |
 | Color science | CIEDE2000 against Sharma et al. (2005) test pairs | Exact to 4 decimals |
-| Luau formatting and syntax | StyLua 2.6 | Clean at 1.1.0. Not re-run for 1.2.0 (see below) |
-| Luau lint | Selene 0.31 with the bundled offline std (`selene.offline.toml`; the full Roblox std could not be downloaded in the build environment) | 0 errors, 0 warnings at 1.1.0; flags deprecated `wait`/`spawn`. Not re-run for 1.2.0 |
-| Luau unit tests | Lune 0.11 (41 tests: Units, Spring, FixedStep, StateMachine, MovementMath, Easing, UIScaler) | Pass at 1.1.0. Not re-run for 1.2.0 |
-| Place build | Rojo 7.7, hierarchy inspected with Lune's Roblox library | Builds; 27 instances at 1.1.0. Not re-run for 1.2.0 |
+| Luau formatting and syntax | StyLua 2.6 | Clean (1.2.0: in CI) |
+| Luau lint | Selene 0.31 with the bundled offline std (`selene.offline.toml`; the full Roblox std could not be downloaded in the build environment) | 0 errors, 0 warnings; flags deprecated `wait`/`spawn` (1.2.0: in CI with the full Roblox std) |
+| Luau unit tests | Lune 0.11 (41 tests: Units, Spring, FixedStep, StateMachine, MovementMath, Easing, UIScaler) | Pass (1.2.0: in CI) |
+| Place build | Rojo 7.7, hierarchy inspected with Lune's Roblox library | Builds; 27 instances inspected at 1.1.0 (1.2.0: builds in CI) |
 | Subject detection | `find_mover.py` on the demo clips | Boxes overlap the true sprite boxes with IoU > 0.7 (static and panning camera); the suggested command reproduces the hand-picked measurements |
 | Pose tracking | `pose_track.py` on a synthetic leg with known angles | Thigh angle within 0.3°, knee within 0.7°, cycle period 29.9 frames (true 30) |
 | Generated Studio code | `studio_snippets.py greybox` output executed in Lune's Roblox DataModel | Correct sizes and positions in studs; re-running rebuilds instead of duplicating |
 | Presets | Every preset applied to the template and loaded in Lune | Valid Luau; measured keys are never overwritten |
 | Whole workflow | `tests/test_end_to_end.py`: init → evidence → probe/extract/find_mover/track → import → breakdown → targets → preset + measured Config → greybox → harness log → comparisons → `fidelity_report` → delivery | Every phase gate advances as expected |
 
-The 1.2.0 build environment could not run StyLua, Selene, Lune or Rojo (running downloaded
-release binaries was not permitted there). The only Luau change in 1.2.0 is the
-MeasurementHarness latency mode and three `Config.DevTools` keys; they passed the API
-cross-check only. CI runs all four tools on push.
+The 1.2.0 build environment could not run StyLua, Selene, Lune or Rojo locally (running
+downloaded release binaries was not permitted there), so for 1.2.0 they ran in CI: GitHub Actions
+run 19 on commit `7145197` passed StyLua, Selene (full Roblox std), the Lune unit tests and the
+Rojo build, plus the Python suite on 3.10 and 3.12. That commit also fixed the two CI jobs that
+had been failing before this release (a Selene warning in `InputProbe.luau`, and the 3.10 job,
+which could not install `skills-ref` and so had never run the tests).
 
 ## New tools in 1.2.0: accuracy on synthetic input
 
@@ -169,11 +171,11 @@ Treat them as "Prepared, not run" until you run them.
 
 - The client modules (MovementFeel, CameraRig, AnimationDriver, Haptics, VRSupport, ShotCamera,
   MeasurementHarness, InputProbe) and the server Bootstrap in a live Studio session.
-- The MeasurementHarness input-latency mode added in 1.2.0 (`DevTools.MeasureLatency`). Its API
-  names pass the creator-docs cross-check (`RunService.PreRender`, `UserInputService.InputBegan`,
-  `Humanoid:GetState`), and `measure_compare` parses its log lines in tests, but StyLua, Selene,
-  Lune and Rojo were not run on this change (the build environment could not run them), and the
-  frame counts it produces have not been compared with a known latency in Studio. The template
+- The MeasurementHarness input-latency mode added in 1.2.0 (`DevTools.MeasureLatency`). It passes
+  the creator-docs cross-check (`RunService.PreRender`, `UserInputService.InputBegan`,
+  `Humanoid:GetState`), StyLua, Selene and the Rojo build in CI, and `measure_compare` parses its
+  log lines in tests, but it has not run in Studio, and its frame counts have not been compared
+  with a known latency. The template
   includes `tests/studio/SmokeTest.luau` for this.
 - MovementFeel's override order relative to the default ControlModule (it binds right after
   `Enum.RenderPriority.Input`). Projects using the Input Action System rollout or a custom
