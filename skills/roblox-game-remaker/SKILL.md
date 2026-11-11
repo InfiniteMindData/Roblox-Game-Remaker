@@ -15,7 +15,7 @@ compatibility: >-
   ffmpeg and ffprobe. Optional: Roblox Studio (built-in MCP server), Rojo, Lune, StyLua, Selene,
   Blender 4.x. Web research needs network access.
 metadata:
-  version: "1.2.1"
+  version: "1.2.2"
   roblox-docs-snapshot: "Roblox/creator-docs 2026-11-03"
 ---
 

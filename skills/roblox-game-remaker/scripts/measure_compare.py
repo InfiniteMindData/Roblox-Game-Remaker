@@ -28,8 +28,12 @@ Derived metrics:
                    (frames x frame duration, per press); --latency-key limits it to one key.
                    input_latency_frames gives the same in the build's frames (info only).
                    Presses with no change before the timeout are counted, not averaged.
-  NAME (--interval NAME=A..B)  time from each event A to the next event B, for frame data
-                   (startup = attack..active, recovery = active..idle). Repeatable.
+  NAME (--interval NAME=A..B)  time from each event A to the first event B before the next A,
+                   for frame data (startup = attack..active, recovery = active..idle). An A
+                   with no B before the next A (a whiffed jab for attack..hit) is counted as
+                   unpaired, not averaged. Repeatable.
+  ground_speed[S]  simulation logs: median speed in each grounded state S at full input
+                   (walkF and walkB separately; ground_speed mixes them).
 
 Frames: when the log has a simulation header (or --hz is given), every time metric also reports
 mean_frames, and a target with "unit": "frames" is judged in frames:
@@ -159,36 +163,58 @@ def derive(samples, events, latency=None, latency_key=None, grounded=None, inter
             out["input_latency_frames"].append(float(lat["f"]))
     for name, (a, b) in (intervals or {}).items():
         vals = out.setdefault(name, [])
-        for ea in (e for e in events if e["n"] == a):
-            nb = next((e for e in events if e["n"] == b and e["t"] > ea["t"]), None)
-            if nb:
-                vals.append(nb["t"] - ea["t"])
+        starts_a = [e["t"] for e in events if e["n"] == a]
+        ends_b = [e["t"] for e in events if e["n"] == b]
+        unpaired = 0
+        for i, ta in enumerate(starts_a):
+            # B closes this A only if it comes before the next A: a whiffed jab must not borrow a later jab's hit.
+            limit = starts_a[i + 1] if i + 1 < len(starts_a) else float("inf")
+            tb = next((x for x in ends_b if ta < x <= limit), None)
+            if tb is None:
+                unpaired += 1
+            else:
+                vals.append(tb - ta)
+        if unpaired:
+            out.setdefault("_unpaired", {})[name] = unpaired  # type: ignore[assignment]
     if not samples:
         return out
     starts = [e["t"] for e in events if e["n"] == "move_start"]
     stops = [e["t"] for e in events if e["n"] == "move_stop"]
 
+    def is_full(s) -> bool:
+        return s["st"] in grounded_states and s["mv"] >= 0.99
+
     # Input-active windows: [move_start, next move_stop). Steady state starts 0.5 s into a window.
     windows = []
     for t0 in starts:
         t1 = next((t for t in stops if t > t0), float("inf"))
-        windows.append((t0 + 0.5, t1))
+        windows.append((t0, t1))
     if windows:
-        full = [hspeed(s) for s in samples if s["st"] in grounded_states and s["mv"] >= 0.99
-                and any(a <= s["t"] < b for a, b in windows)]
+        full = [hspeed(s) for s in samples if is_full(s) and any(a + 0.5 <= s["t"] < b for a, b in windows)]
     else:
-        full = [hspeed(s) for s in samples if s["st"] in grounded_states and s["mv"] >= 0.99]
+        full = [hspeed(s) for s in samples if is_full(s)]
     steady = statistics.median(full) if full else None
     if steady:
         out["ground_speed"].append(steady)
-        for t0 in starts:
-            nxt = next((s for s in samples if s["t"] >= t0 and hspeed(s) >= 0.9 * steady), None)
+    # Acceleration and deceleration use each window's own steady speed, so walks at different speeds
+    # (forward and backward, walk and run) do not distort each other.
+    for t0, t1 in windows:
+        own = [hspeed(s) for s in samples if is_full(s) and t0 + 0.5 <= s["t"] < t1]
+        ref = statistics.median(own) if own else steady
+        if not ref:
+            continue
+        nxt = next((s for s in samples if t0 <= s["t"] < t1 and hspeed(s) >= 0.9 * ref), None)
+        if nxt:
+            out["accel_t90"].append(nxt["t"] - t0)
+        if t1 != float("inf"):
+            nxt = next((s for s in samples if s["t"] >= t1 and hspeed(s) <= 0.1 * ref), None)
             if nxt:
-                out["accel_t90"].append(nxt["t"] - t0)
-        for t0 in stops:
-            nxt = next((s for s in samples if s["t"] >= t0 and hspeed(s) <= 0.1 * steady), None)
-            if nxt:
-                out["decel_t10"].append(nxt["t"] - t0)
+                out["decel_t10"].append(nxt["t"] - t1)
+    # Simulation logs: one speed per grounded state the game declared (walkF, walkB, run ...).
+    for state in sorted(set(grounded or ())):
+        sp = [hspeed(s) for s in samples if s["st"] == state and s["mv"] >= 0.99 and hspeed(s) > 0]
+        if sp:
+            out[f"ground_speed[{state}]"] = [statistics.median(sp)]
 
     jumps = [e["t"] for e in events if e["n"] == "jump"]
     lands = [e["t"] for e in events if e["n"] == "land"]
@@ -282,6 +308,7 @@ def main() -> int:
         data = rc.read_json(args.targets)
         targets = data.get("metrics", {}) if isinstance(data, dict) else {}
     derived = derive(samples, events, latency, args.latency_key, meta.get("grounded"), intervals)
+    unpaired = derived.pop("_unpaired", {})
     timed = TIME_METRICS | set(intervals)
     results = {name: judge(vals, targets.get(name), hz, name in timed) for name, vals in derived.items()}
     failed = [n for n, r in results.items() if r["status"] == "fail"]
@@ -292,6 +319,7 @@ def main() -> int:
     timeouts = sum(1 for lat in latency if (lat["f"] is None or lat["f"] < 0) and (not args.latency_key or lat["key"] == args.latency_key))
     report = {"tool": TOOL, "log": str(args.log), "subject": args.subject, "subjects": meta.get("ids") or [], "hz": hz,
               "samples": len(samples), "events": len(events), "unparsed_lines": bad, "status": status,
+              "unpaired_intervals": unpaired,
               "latency_presses": len(latency), "latency_timeouts": timeouts,
               "metrics": results, "failed": failed, "missing": missing, "pass": ok}
     if args.json:
@@ -310,6 +338,8 @@ def main() -> int:
                 print(f"info  {name:<15} {r['mean']}{unit}{fr} (n={r['n']}, std {r['std']})")
             elif name in missing:
                 print(f"MISS  {name:<15} not observed (reproduce this test in the playtest)")
+        for name, n in unpaired.items():
+            print(f"note  {name:<15} {n} start event(s) had no end before the next start (not averaged)")
         if status == "unchecked":
             print("result: unchecked - no metric has a target, nothing was judged (pass --targets)")
         else:

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.2 — 2026-11-11
+
+From wiring `SimRecorder` into a live fighting game and measuring a training session.
+
+- `measure_compare.py --interval A..B` ends each interval at the first B *before the next A*. It
+  used to take the next B anywhere, so `attack..hit` paired two whiffed jabs with a later jab's
+  hit (about 2 s instead of 7 frames). Starts without an end are reported as unpaired and left
+  out of the average.
+- `accel_t90` and `decel_t10` use each walk's own steady speed. With two walk speeds in one log
+  (forward 9, backward 7 studs/s) the back-walk never reached 90% of the shared median, and the
+  metric read 138 frames instead of 0. Simulation logs also report `ground_speed[STATE]` per
+  grounded state.
+- `references/studio-mcp.md`: `get_console_output` keeps only recent output (a few seconds of a
+  60 Hz log); read Studio's own log file between `REMAKE_RUN` markers instead. How hitstop shows
+  up in frame data, and how to measure only connecting attacks.
+
 ## 1.2.1 — 2026-11-11
 
 Tested against a live Studio place (a fighting game with its own 60 Hz simulation) and on Windows.

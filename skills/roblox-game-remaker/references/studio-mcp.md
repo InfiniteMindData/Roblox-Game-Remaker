@@ -79,6 +79,22 @@ have.
    server) and run `measure_compare.py run.log --subject p1 --interval startup=attack..active`;
    targets with `"unit": "frames"` are judged in simulation ticks. A log with no motion samples
    fails instead of passing.
+
+   **`get_console_output` keeps only the most recent output** and marks the rest
+   `[TRUNCATED DUE TO LENGTH LIMIT]`: a 60 Hz log of a few seconds already loses its start, and
+   with it the `{"k":"sim"}` header. Either keep each run short (log one subject, read the console
+   after each segment), or read the complete Output from Studio's own log file, which has no limit:
+   `%LOCALAPPDATA%\Roblox\logs\*_Studio_*_last.log` on Windows, `~/Library/Logs/Roblox/` on macOS.
+   Print a marker such as `REMAKE_RUN run-03 begin` / `end` with `execute_luau` around each run
+   and cut the file between the markers. `extract-log` keeps the `REMAKE_*` lines. If a run starts
+   after the recorder was created, copy its `{"k":"sim"}` header line into the run's log.
+
+   Frame data: `--interval startup=attack..active` pairs each start with the first end before the
+   next start, and reports starts without an end as unpaired, so `--interval contact=attack..hit`
+   measures only the attacks that connected. On a hit, hitstop pauses the move's own frame
+   counter, so `attack..neutral` grows by the hitstop length; compare whiffs with whiffs.
+   Simulation logs report `ground_speed[STATE]` per grounded state (forward and backward walk
+   separately); plain `ground_speed` is the median over all of them.
 6. **Capture shots:** `screen_capture` with the shot's camera position and look-at. For an exact
    FOV and hidden UI, first run the snippet from `studio_snippets.py apply-shot remake/shots.json --id SHOT-03`
    with `execute_luau` (Client, during play), then capture. `studio_snippets.py shots` generates the
