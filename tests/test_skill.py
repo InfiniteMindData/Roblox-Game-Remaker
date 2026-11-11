@@ -56,7 +56,7 @@ class ValidatorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bad = Path(tmp) / "bad-skill"
             bad.mkdir()
-            (bad / "SKILL.md").write_text("---\nname: Bad--Skill\ndescription: x\nfoo: 1\n---\nSee [ref](references/missing.md)\n")
+            (bad / "SKILL.md").write_text("---\nname: Bad--Skill\ndescription: x\nfoo: 1\n---\nSee [ref](references/missing.md)\n", encoding="utf-8")
             proc = subprocess.run([sys.executable, str(ROOT / "tools" / "validate_skill.py"), str(bad), "--json"],
                                   capture_output=True, text=True)
             self.assertEqual(proc.returncode, 1)
@@ -158,12 +158,12 @@ class ImageToolTests(unittest.TestCase):
             {"id": "A", "reference": "ref.png", "recreation": "ref.png", "thresholds": {"ssim": 0.95}},
             {"id": "B", "reference": "ref.png", "recreation": "missing.png"},
         ]}
-        (self.dir / "shots.json").write_text(json.dumps(shots))
+        (self.dir / "shots.json").write_text(json.dumps(shots), encoding="utf-8")
         proc = run("visual_compare.py", "batch", self.dir / "shots.json", "--out", self.dir / "batch", "--root", self.dir)
         self.assertEqual(proc.returncode, 1)
         proc2 = run("visual_compare.py", "batch", self.dir / "shots.json", "--out", self.dir / "batch2", "--root", self.dir, "--allow-missing")
         self.assertEqual(proc2.returncode, 0, proc2.stdout)
-        summary = json.loads((self.dir / "batch2" / "summary.json").read_text())
+        summary = json.loads((self.dir / "batch2" / "summary.json").read_text(encoding="utf-8"))
         self.assertEqual([s["status"] for s in summary["shots"]], ["pass", "missing-capture"])
 
     def test_palette(self):
@@ -187,7 +187,7 @@ class UiMeasureTests(unittest.TestCase):
                 {"name": "Health", "bbox": [48, 980, 420, 36], "anchor": "bottom-left"},
                 {"name": "Ammo", "bbox": [1700, 960, 172, 72]},
                 {"name": "Cross", "bbox": [944, 524, 32, 32]}]}
-            (d / "ref.json").write_text(json.dumps(boxes))
+            (d / "ref.json").write_text(json.dumps(boxes), encoding="utf-8")
             out = json.loads(run("ui_measure.py", d / "ref.json", "--json").stdout)
             by = {e["name"]: e for e in out["elements"]}
             self.assertEqual(by["Health"]["offset_strategy"]["Position"], {"XScale": 0.0, "XOffset": 48.0, "YScale": 1.0, "YOffset": -64.0})
@@ -197,7 +197,7 @@ class UiMeasureTests(unittest.TestCase):
             luau = run("ui_measure.py", d / "ref.json", "--luau").stdout
             self.assertIn("UDim2.new(0.0, 48.0, 1.0, -64.0)", luau)
             boxes["elements"][0]["bbox"] = [60, 985, 420, 36]
-            (d / "rec.json").write_text(json.dumps(boxes))
+            (d / "rec.json").write_text(json.dumps(boxes), encoding="utf-8")
             self.assertEqual(run("ui_measure.py", "--compare", d / "ref.json", d / "rec.json", "--tolerance", "0.5").returncode, 1)
             self.assertEqual(run("ui_measure.py", "--compare", d / "ref.json", d / "rec.json", "--tolerance", "1.0").returncode, 0)
 
@@ -208,11 +208,11 @@ class BreakdownTests(unittest.TestCase):
             proj = Path(tmp)
             self.assertEqual(run("breakdown_init.py", proj, "--game", "Test Game", "--version", "2.0").returncode, 0)
             intake = proj / "remake" / "00-intake.md"
-            self.assertIn("Test Game", intake.read_text())
-            intake.write_text("edited")
+            self.assertIn("Test Game", intake.read_text(encoding="utf-8"))
+            intake.write_text("edited", encoding="utf-8")
             run("breakdown_init.py", proj, "--game", "Other")
-            self.assertEqual(intake.read_text(), "edited")
-            json.loads((proj / "remake" / "evidence.json").read_text())
+            self.assertEqual(intake.read_text(encoding="utf-8"), "edited")
+            json.loads((proj / "remake" / "evidence.json").read_text(encoding="utf-8"))
             self.assertEqual(run("breakdown_check.py", proj / "remake").returncode, 0)
             self.assertEqual(run("breakdown_check.py", proj / "remake", "--strict").returncode, 1)
 
@@ -228,9 +228,9 @@ class BreakdownTests(unittest.TestCase):
             root.mkdir()
             (root / "evidence.json").write_text(json.dumps({"evidence": [
                 {"id": "EV-001", "type": "video", "accessible": False, "source": "x"},
-                {"id": "EV-002", "type": "wiki", "accessible": True, "source": "y"}]}))
+                {"id": "EV-002", "type": "wiki", "accessible": True, "source": "y"}]}), encoding="utf-8")
             (root / "measurements.json").write_text(json.dumps({"measurements": [
-                {"id": "MS-001", "evidence": ["EV-001"], "value": 1, "unit": "s", "uncertainty": 0.1, "method": "m"}]}))
+                {"id": "MS-001", "evidence": ["EV-001"], "value": 1, "unit": "s", "uncertainty": 0.1, "method": "m"}]}), encoding="utf-8")
             cats = ["CTRL", "MOVE", "CAM", "MECH", "CHAR", "ANIM", "UI", "ENV", "VFX", "AUD", "AI", "SYS"]
             text = "## Coverage\n- n/a: " + "\n- n/a: ".join(c + " (test)" for c in cats[1:]) + "\n- n/a: VR (test)\n\n"
             text += ("### CTRL-001: Measured from inaccessible video\n- status: MEASURED\n- evidence: EV-001, MS-001\n"
@@ -238,7 +238,7 @@ class BreakdownTests(unittest.TestCase):
                      "### CTRL-002: Verified from a wiki\n- status: VERIFIED\n- evidence: EV-002\n- roblox: r\n- accept: a\n\n"
                      "### CTRL-003: Unknown without question\n- status: UNKNOWN\n- roblox: r\n- accept: a\n\n"
                      "### CTRL-004: Bad id reference\n- status: OBSERVED\n- evidence: EV-999\n- roblox: r\n- accept: a\n")
-            (root / "breakdown.md").write_text(text)
+            (root / "breakdown.md").write_text(text, encoding="utf-8")
             proc = run("breakdown_check.py", root, "--json")
             self.assertEqual(proc.returncode, 1)
             messages = "\n".join(e["message"] for e in json.loads(proc.stdout)["errors"])
@@ -275,7 +275,7 @@ class MeasureCompareTests(unittest.TestCase):
             if len(batch) == 30:
                 lines.append("REMAKE_MEASURE " + json.dumps({"k": "b", "s": batch}))
                 batch = []
-        path.write_text("\n".join(lines) + "\n")
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def test_metrics_and_targets(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -285,14 +285,14 @@ class MeasureCompareTests(unittest.TestCase):
                                    "accel_t90": {"target": 0.18, "tolerance": 0.017},
                                    "jump_apex": {"target": 7.4, "tolerance": 0.3},
                                    "jump_fall_time": {"target": 0.3, "tolerance": 0.017}}}
-            (d / "t.json").write_text(json.dumps(targets))
+            (d / "t.json").write_text(json.dumps(targets), encoding="utf-8")
             proc = run("measure_compare.py", d / "run.log", "--targets", d / "t.json", "--json")
             self.assertEqual(proc.returncode, 0, proc.stdout)
             m = json.loads(proc.stdout)["metrics"]
             self.assertAlmostEqual(m["jump_apex"]["mean"], 7.4, delta=0.05)
             targets["metrics"]["jump_apex"]["target"] = 9.0
             targets["metrics"]["decel_t10"] = {"target": 0.1, "tolerance": 0.02}
-            (d / "t2.json").write_text(json.dumps(targets))
+            (d / "t2.json").write_text(json.dumps(targets), encoding="utf-8")
             proc2 = run("measure_compare.py", d / "run.log", "--targets", d / "t2.json", "--json")
             self.assertEqual(proc2.returncode, 1)
             data = json.loads(proc2.stdout)
@@ -333,7 +333,7 @@ class VideoPipelineTests(unittest.TestCase):
         cls.dir = Path(cls.tmp.name)
         subprocess.run([sys.executable, str(SKILL / "examples" / "demo" / "make_demo_footage.py"), "--out", str(cls.dir)],
                        check=True, capture_output=True)
-        cls.truth = json.loads((cls.dir / "ground_truth.json").read_text())
+        cls.truth = json.loads((cls.dir / "ground_truth.json").read_text(encoding="utf-8"))
 
     @classmethod
     def tearDownClass(cls):
@@ -364,7 +364,7 @@ class VideoPipelineTests(unittest.TestCase):
         out = self.dir / "ex_range"
         proc = run("extract_frames.py", self.dir / "demo_jump.mkv", "--out", out, "--mode", "range", "--start", "10", "--end", "19")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        man = json.loads((out / "manifest.json").read_text())
+        man = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual([f["index"] for f in man["frames"]], list(range(10, 20)))
         self.assertAlmostEqual(man["frames"][0]["pts_time"], 10 / 60, delta=0.002)
         self.assertTrue(all((out / f["file"]).is_file() for f in man["frames"]))
@@ -372,7 +372,7 @@ class VideoPipelineTests(unittest.TestCase):
                              "--start", "0", "--end", "1").returncode, 2, "non-empty output dir must be refused")
         times = self.dir / "ex_times"
         run("extract_frames.py", self.dir / "demo_jump.mkv", "--out", times, "--mode", "times", "--times", "0.5,1.0", "--crop", "0,0,100,50")
-        man2 = json.loads((times / "manifest.json").read_text())
+        man2 = json.loads((times / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual([f["index"] for f in man2["frames"]], [30, 60])
         with Image.open(times / man2["frames"][0]["file"]) as im:
             self.assertEqual(im.size, (100, 50))
@@ -382,7 +382,7 @@ class VideoPipelineTests(unittest.TestCase):
         run("extract_frames.py", self.dir / "demo_jump.mkv", "--out", out, "--mode", "all")
         run("motion_track.py", out / "manifest.json", "--bbox", "288,288,24,24", "--px-per-unit", "20",
             "--analyze", "jump", "--out", self.dir / "jump.json")
-        j = json.loads((self.dir / "jump.json").read_text())["jump"]
+        j = json.loads((self.dir / "jump.json").read_text(encoding="utf-8"))["jump"]
         t = self.truth["jump"]
         self.assertAlmostEqual(j["apex_height"], t["apex_height"], delta=0.1)
         self.assertAlmostEqual(j["rise_time_s"], t["rise_time_s"], delta=1 / 60)
@@ -397,7 +397,7 @@ class VideoPipelineTests(unittest.TestCase):
         proc = run("motion_track.py", out / "manifest.json", "--bbox", "90,200,20,20", "--anchor-bbox", "400,20,40,40",
                    "--search", "40", "--px-per-unit", "20", "--analyze", "speed", "--out", self.dir / "run.json")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        s = json.loads((self.dir / "run.json").read_text())["speed"]
+        s = json.loads((self.dir / "run.json").read_text(encoding="utf-8"))["speed"]
         t = self.truth["run"]
         self.assertAlmostEqual(s["steady_speed"], t["steady_speed"], delta=0.3)
         self.assertAlmostEqual(s["t90_s"], t["t90_s"], delta=1 / 60)
@@ -479,7 +479,7 @@ class ApiCrossCheckTests(unittest.TestCase):
             bad.write_text('local Lighting = game:GetService("Lighting")\n'
                            'Lighting.Technolgy = Enum.Technology.Future\n'
                            'local h = Enum.HumanoidStateType.Jumpin\n'
-                           'local p = Instance.new("BodyVelocity")\n')
+                           'local p = Instance.new("BodyVelocity")\n', encoding="utf-8")
             proc = subprocess.run([sys.executable, str(ROOT / "tools" / "check_roblox_api.py"), "--docs", os.environ["ROBLOX_API_DOCS"],
                                    str(bad), "--json"], capture_output=True, text=True)
             data = json.loads(proc.stdout)

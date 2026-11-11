@@ -144,7 +144,7 @@ class GroundTests(unittest.TestCase):
         track = {"tool": "motion_track", "schema": 1, "bbox": [0, 0, 20, 20], "anchor_bbox": anchor, "samples": samples,
                  "fps_from_samples": 60.0, "low_score_samples": 0}
         path = self.dir / "track.json"
-        path.write_text(json.dumps(track))
+        path.write_text(json.dumps(track), encoding="utf-8")
         return path
 
     def test_points_and_track_to_world_units(self):
@@ -153,7 +153,7 @@ class GroundTests(unittest.TestCase):
         proc = run("camera_solve.py", "ground", "--image", "1280x720", "--corners", self.corners, "--rect", "20x20",
                    "--points", f"{mid[0]},{mid[1]}", "--track", self.make_track(), "--analyze", "speed", "--out", out)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        g = json.loads(out.read_text())
+        g = json.loads(out.read_text(encoding="utf-8"))
         self.assertAlmostEqual(g["points"][0]["ground"][0], 10.0, delta=0.002)
         self.assertAlmostEqual(g["points"][0]["ground"][1], 10.0, delta=0.002)
         ms = {m["metric"]: m for m in g["measurements"]}
@@ -187,7 +187,7 @@ class GroundTests(unittest.TestCase):
             "--lines-z=" + lines(project, Z_LINES), "--known-height", ",".join(map(str, base + top)) + ",5", "--out", out)
         proc = run("ledger.py", "import", remake, out, "--evidence", ev)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        ms = json.loads((remake / "measurements.json").read_text())["measurements"]
+        ms = json.loads((remake / "measurements.json").read_text(encoding="utf-8"))["measurements"]
         self.assertEqual([m["metric"] for m in ms], ["camera_vfov", "camera_pitch", "camera_roll", "camera_height"])
         self.assertTrue(all(m["uncertainty"] > 0 and m["method"].startswith("camera_solve") for m in ms))
         g = self.dir / "g.json"
@@ -195,7 +195,7 @@ class GroundTests(unittest.TestCase):
             "--track", self.make_track(), "--analyze", "speed", "--out", g)
         self.assertEqual(run("ledger.py", "import", remake, g, "--evidence", ev).returncode, 0)
         run("ledger.py", "targets", remake)
-        metrics = json.loads((remake / "targets.json").read_text())["metrics"]
+        metrics = json.loads((remake / "targets.json").read_text(encoding="utf-8"))["metrics"]
         self.assertNotIn("camera_vfov", metrics)
         self.assertAlmostEqual(metrics["ground_speed"]["target"], 12.0, delta=0.02)
 
@@ -210,7 +210,7 @@ class PerspectiveFootageTests(unittest.TestCase):
         cls.dir = Path(cls.tmp.name)
         subprocess.run([sys.executable, str(SKILL / "examples" / "demo" / "make_demo_footage.py"), "--out", str(cls.dir),
                         "--only", "perspective"], check=True, capture_output=True)
-        cls.truth = json.loads((cls.dir / "ground_truth.json").read_text())["perspective"]
+        cls.truth = json.loads((cls.dir / "ground_truth.json").read_text(encoding="utf-8"))["perspective"]
         run("extract_frames.py", cls.dir / "demo_perspective.mkv", "--out", cls.dir / "frames", "--mode", "all")
         cls.corners = ";".join(f"{round(x)},{round(y)}" for x, y in cls.truth["rect_corners_px"])
 
@@ -226,7 +226,7 @@ class PerspectiveFootageTests(unittest.TestCase):
         proc = run("camera_solve.py", "ground", "--image", "640x360", "--corners", self.corners, "--rect", "12x12",
                    "--track", track, "--contact", "bottom", "--analyze", "speed", "--out", out)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        return json.loads(out.read_text())
+        return json.loads(out.read_text(encoding="utf-8"))
 
     def test_scale_search_track_converts_to_the_true_speed(self):
         g = self.convert("--scale-search")

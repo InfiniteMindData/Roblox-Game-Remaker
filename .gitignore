@@ -12,3 +12,9 @@ remake/frames/
 remake/captures/
 .DS_Store
 skills/roblox-game-remaker/evals/files/
+
+# Tool outputs written to the repository root by hand-run commands
+/cc.png
+/fc.json
+/rec.json
+/ref.json

@@ -110,7 +110,7 @@ class AudioCompareTests(unittest.TestCase):
         ev = run("ledger.py", "add-evidence", self.dir / "remake", "--type", "video", "--title", "jump sfx", "--source", "j.wav",
                  "--analysis", "audio_compare").stdout.strip()
         self.assertEqual(run("ledger.py", "import", self.dir / "remake", out, "--evidence", ev).returncode, 0)
-        ms = json.loads((self.dir / "remake" / "measurements.json").read_text())["measurements"]
+        ms = json.loads((self.dir / "remake" / "measurements.json").read_text(encoding="utf-8"))["measurements"]
         self.assertEqual([m["metric"] for m in ms], ["audio_duration", "audio_dominant_hz", "audio_level_dbfs"])
         self.assertEqual(run("audio_compare.py", "analyze", self.dir / "missing.wav").returncode, 2)
         self.assertEqual(run("audio_compare.py", "analyze", tone, "--start", "1", "--end", "0.5").returncode, 2)

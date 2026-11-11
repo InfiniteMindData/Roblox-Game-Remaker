@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.2.1 — 2026-11-11
+
+Tested against a live Studio place (a fighting game with its own 60 Hz simulation) and on Windows.
+
+- `Remake/SimRecorder` (template, shared): a measurement log for games whose motion comes from
+  their own simulation instead of a Humanoid. `MeasurementHarness` only follows the local
+  player's Humanoid, so on such games it logged nothing. Called from the simulation step on the
+  client or the server, it writes `REMAKE_MEASURE` lines with a subject id and tick-exact times.
+  Lune tests cover it.
+- `measure_compare.py`: reads `SimRecorder` logs (`--subject`, the game's own state names and its
+  `grounded` list), adds `--interval NAME=A..B` for frame data such as startup and recovery,
+  reports `mean_frames` for time metrics, and judges targets with `"unit": "frames"` in ticks.
+  `clip_compare.py` gains `--subject`.
+- No more passes for things nothing checked. `measure_compare.py` fails a log with no motion
+  samples, and reports `unchecked` when no metric has a target. `visual_compare.py` reports
+  `unchecked` without thresholds and fails a pair whose aspect ratios differ by more than 1%
+  (it used to stretch a 2.57:1 Studio capture onto a 16:9 reference and score SSIM 0.998);
+  `--allow-aspect-mismatch` or `"allow_aspect_mismatch": true` opts in. `fidelity_report.py`
+  marks such shots as failing.
+- Windows: `doctor.py` and every script that runs an external tool now start it by its resolved
+  path, so tools installed as `.cmd` launchers (Blender, package-manager shims) work; `doctor.py`
+  reports a tool as usable only when it actually starts. `run_demo.sh` no longer calls `python3`
+  (the Microsoft Store placeholder on Windows) and honors `PYTHON`. Script output never crashes on
+  a character the console code page lacks. The tests open every file as UTF-8 (they failed on
+  Windows code pages), and accept the `.claude/skills` link checked out as a text file. CI gains a
+  Windows job that runs the tests and the demo.
+- `references/studio-mcp.md`: inventory from the content containers rather than `game` (whose
+  100+ services fill the result limit), check for a Humanoid before choosing the harness, and
+  what `screen_capture` returns (JPEG at the viewport size: aspect ratio and about 1-1.5 delta E
+  of compression).
+- Removed stray test outputs from the repository root (`cc.png`, `fc.json`, `rec.json`,
+  `ref.json`).
+
 ## 1.2.0 — 2026-11-11
 
 Measurement beyond side-on 2D footage, and honesty under real-world footage.

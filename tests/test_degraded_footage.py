@@ -38,7 +38,7 @@ class DegradedFootageTests(unittest.TestCase):
         cls.dir = Path(cls.tmp.name)
         subprocess.run([sys.executable, str(SKILL / "examples" / "demo" / "make_demo_footage.py"), "--out", str(cls.dir),
                         "--only", "degraded"], check=True, capture_output=True)
-        truth = json.loads((cls.dir / "ground_truth.json").read_text())
+        truth = json.loads((cls.dir / "ground_truth.json").read_text(encoding="utf-8"))
         cls.jump, cls.run_truth = truth["jump"], truth["run"]
 
     @classmethod
@@ -53,7 +53,7 @@ class DegradedFootageTests(unittest.TestCase):
         out = frames / "track.json"
         proc = run("motion_track.py", frames / "manifest.json", *args, "--out", out)
         self.assertEqual(proc.returncode, code, proc.stderr)
-        return (json.loads(out.read_text()) if code == 0 else None), proc
+        return (json.loads(out.read_text(encoding="utf-8")) if code == 0 else None), proc
 
     def assert_honest(self, name, value, truth, unc, k=2.0):
         """Within k reported standard uncertainties (or the stated bound) of the truth."""
@@ -84,7 +84,7 @@ class DegradedFootageTests(unittest.TestCase):
         run("extract_frames.py", self.dir / "demo_run_h264_crf40.mp4", "--out", frames, "--mode", "all")
         proc = run("motion_track.py", frames / "manifest.json", *RUN_ARGS, "--out", frames / "track.json")
         if proc.returncode == 0:
-            t = json.loads((frames / "track.json").read_text())
+            t = json.loads((frames / "track.json").read_text(encoding="utf-8"))
             s = t["speed"]
             self.assertTrue(t["warnings"] or s["notes"] or t["low_score_samples"], "a result on destroyed footage must warn")
             self.assert_honest("speed", s["steady_speed"], self.run_truth["steady_speed"], s["steady_speed_std"])
@@ -155,7 +155,7 @@ class LedgerReliabilityTests(unittest.TestCase):
                      "samples": [{"index": i} for i in range(10)],
                      "speed": {"steady_speed": 19, "steady_speed_std": 0.1, "t90_s": 0.2, "linear_ramp": {"time_to_full_s": 0.22},
                                "exponential": {"tau_s": 0.1}, "preferred_model": "linear_ramp", "time_precision_s": FRAME}}
-            (d / "t.json").write_text(json.dumps(track))
+            (d / "t.json").write_text(json.dumps(track), encoding="utf-8")
             proc = run("ledger.py", "import", d / "remake", d / "t.json", "--evidence", ev)
             self.assertEqual(proc.returncode, 1)
             self.assertIn("unreliable", proc.stderr)

@@ -11,6 +11,7 @@ local specs = {
 	"./MovementMath.spec",
 	"./Easing.spec",
 	"./UIScaler.spec",
+	"./SimRecorder.spec",
 }
 
 for _, spec in specs do

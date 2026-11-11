@@ -91,6 +91,8 @@ def collect_shots(remake: Path, shots_file: Path | None) -> tuple[dict, list[str
             out[f"shot:{sid}"] = {"kind": "shot", "r": None if r is None else round(r, 4), "parts": parts,
                                   "values": {k: m.get(k) for k in ("ssim", "delta_e_mean", "edge_iou")},
                                   "status": "info" if r is None else ("pass" if r <= 1 else "fail")}
+            if s.get("aspect_mismatch"):  # a stretched comparison is not a measurement
+                out[f"shot:{sid}"].update({"status": "fail", "detail": "aspect mismatch: recapture at the reference aspect ratio"})
     else:
         for rep in sorted((remake / "diff").rglob("report.json")):
             data = load(rep) or {}
@@ -102,6 +104,8 @@ def collect_shots(remake: Path, shots_file: Path | None) -> tuple[dict, list[str
             out[key] = {"kind": "shot", "r": None if r is None else round(r, 4), "parts": parts,
                         "values": {k: data.get("metrics", {}).get(k) for k in ("ssim", "delta_e_mean", "edge_iou")},
                         "status": "info" if r is None else ("pass" if r <= 1 else "fail")}
+            if any(f.startswith("aspect mismatch") for f in data.get("failures") or []):
+                out[key].update({"status": "fail", "detail": "aspect mismatch: recapture at the reference aspect ratio"})
     return out, sources
 
 

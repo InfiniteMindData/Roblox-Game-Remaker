@@ -19,8 +19,19 @@ Subcommands:
                  [--fail-under-ssim X] [--fail-over-delta-e Y] [--fail-under-edge-iou Z]
   batch SHOTS.json --out DIR [--root PATH] [--allow-missing]
 
-Exit status: 0 = pass (or no thresholds), 1 = a threshold failed or a shot is missing,
-2 = bad input.
+A recreation whose aspect ratio differs from the reference by more than 1% fails: it would be
+stretched before comparison, so the metrics would not mean anything. Recapture at the reference
+aspect ratio, or pass --allow-aspect-mismatch (shots.json: "allow_aspect_mismatch": true) when the
+stretch is intended.
+
+Without thresholds nothing is judged: the result is "unchecked", not "pass". Set thresholds with
+--fail-under-ssim / --fail-over-delta-e / --fail-under-edge-iou, or "thresholds" in shots.json.
+
+Studio MCP screen_capture returns JPEG at the viewport size. JPEG alone adds roughly 1-1.5 mean
+delta E (more at edges), so leave that headroom in delta_e_mean thresholds or capture lossless PNGs.
+
+Exit status: 0 = pass or unchecked, 1 = a threshold failed, an aspect mismatch, or a shot is
+missing, 2 = bad input.
 """
 
 from __future__ import annotations
@@ -231,7 +242,10 @@ def compare(ref_path: Path, rec_path: Path, out_dir: Path, *, crop=None, mask_pa
     ref_aspect = ref.shape[1] / ref.shape[0]
     rec_aspect = rec.shape[1] / rec.shape[0]
     if abs(ref_aspect - rec_aspect) / ref_aspect > 0.01:
+        aspect = {"reference": round(ref_aspect, 4), "recreation": round(rec_aspect, 4)}
         notes.append(f"aspect mismatch: reference {ref_aspect:.4f}, recreation {rec_aspect:.4f}; capture at the reference aspect ratio")
+    else:
+        aspect = None
     h, w = ref.shape[:2]
     if metric_width and w > metric_width:
         scale = metric_width / w
@@ -314,7 +328,7 @@ def compare(ref_path: Path, rec_path: Path, out_dir: Path, *, crop=None, mask_pa
         "reference": str(ref_path), "recreation": str(rec_path),
         "crop": list(crop) if crop else None, "mask": str(mask_path) if mask_path else None,
         "compared_pixels": int(valid.sum()),
-        "metrics": metrics, "notes": notes,
+        "metrics": metrics, "notes": notes, "aspect_mismatch": aspect,
     }
 
     if write_images:
@@ -342,6 +356,24 @@ def compare(ref_path: Path, rec_path: Path, out_dir: Path, *, crop=None, mask_pa
     return report
 
 
+def has_thresholds(thresholds: dict | None) -> bool:
+    return any(v is not None for v in (thresholds or {}).values())
+
+
+def aspect_failures(rep: dict, allow: bool) -> list[str]:
+    a = rep.get("aspect_mismatch")
+    if not a or allow:
+        return []
+    return [f"aspect mismatch: reference {a['reference']}, recreation {a['recreation']} "
+            "(recapture at the reference aspect ratio, or allow the stretch explicitly)"]
+
+
+def status_of(failures: list[str], thresholds: dict | None) -> str:
+    if failures:
+        return "fail"
+    return "pass" if has_thresholds(thresholds) else "unchecked"
+
+
 def evaluate(metrics: dict, thresholds: dict) -> list[str]:
     failures = []
     if thresholds.get("ssim") is not None and metrics.get("ssim") is not None and metrics["ssim"] < thresholds["ssim"]:
@@ -353,7 +385,7 @@ def evaluate(metrics: dict, thresholds: dict) -> list[str]:
     return failures
 
 
-def print_report(rep: dict, failures: list[str]) -> None:
+def print_report(rep: dict, failures: list[str], status: str) -> None:
     m = rep["metrics"]
     print(f"reference:   {rep['reference']}")
     print(f"recreation:  {rep['recreation']}")
@@ -369,7 +401,13 @@ def print_report(rep: dict, failures: list[str]) -> None:
         print(f"edge IoU {m['edge_iou']}")
     for n in rep["notes"]:
         print(f"note: {n}")
-    print("result: " + ("FAIL - " + "; ".join(failures) if failures else "pass"))
+    if status == "fail":
+        print("result: FAIL - " + "; ".join(failures))
+    elif status == "unchecked":
+        print("result: unchecked - no thresholds set, nothing was judged "
+              "(add --fail-under-ssim, --fail-over-delta-e or --fail-under-edge-iou)")
+    else:
+        print("result: pass")
 
 
 def parse_crop(value):
@@ -384,14 +422,16 @@ def cmd_pair(args) -> int:
     thresholds = {"ssim": args.fail_under_ssim, "delta_e_mean": args.fail_over_delta_e, "edge_iou": args.fail_under_edge_iou}
     rep = compare(args.reference, args.recreation, args.out, crop=parse_crop(args.crop), mask_path=args.mask,
                   grid=parse_grid(args.grid), edges_only=args.edges_only, metric_width=args.metric_width)
-    failures = evaluate(rep["metrics"], thresholds)
+    failures = aspect_failures(rep, args.allow_aspect_mismatch) + evaluate(rep["metrics"], thresholds)
+    status = status_of(failures, thresholds)
     rep["thresholds"] = thresholds
     rep["failures"] = failures
+    rep["status"] = status
     rc.write_json(args.out / "report.json", rep)
     if args.json:
         print(rc.dump_json(rep))
     else:
-        print_report(rep, failures)
+        print_report(rep, failures, status)
         print(f"wrote {args.out}/report.json, side_by_side.png, heatmap.png, edges.png, blink.gif")
     return rc.EXIT_FAIL if failures else rc.EXIT_OK
 
@@ -422,8 +462,10 @@ def cmd_batch(args) -> int:
                 rc.fail(f"{sid}: mask not found: {mask}")
             rep = compare(ref, rec, args.out / sid, crop=parse_crop(shot.get("crop")), mask_path=mask,
                           grid=parse_grid(shot.get("grid", "8x6")), metric_width=args.metric_width)
-            fails = evaluate(rep["metrics"], shot.get("thresholds") or {})
-            entry.update({"status": "fail" if fails else "pass", "failures": fails,
+            fails = (aspect_failures(rep, bool(shot.get("allow_aspect_mismatch")) or args.allow_aspect_mismatch)
+                     + evaluate(rep["metrics"], shot.get("thresholds") or {}))
+            entry.update({"status": status_of(fails, shot.get("thresholds")), "failures": fails,
+                          "aspect_mismatch": rep.get("aspect_mismatch") if fails and rep.get("aspect_mismatch") else None,
                           "metrics": {k: v for k, v in rep["metrics"].items() if k in ("ssim", "delta_e_mean", "edge_iou", "lab_shift")}})
             bad += 1 if fails else 0
         summary.append(entry)
@@ -448,6 +490,7 @@ def main() -> int:
     p.add_argument("--fail-under-ssim", type=float)
     p.add_argument("--fail-over-delta-e", type=float)
     p.add_argument("--fail-under-edge-iou", type=float)
+    p.add_argument("--allow-aspect-mismatch", action="store_true", help="compare even when the aspect ratios differ (stretches the recreation)")
     p.add_argument("--json", action="store_true")
     b = sub.add_parser("batch", help="compare every shot in a shots.json")
     b.add_argument("shots", type=Path)
@@ -455,6 +498,7 @@ def main() -> int:
     b.add_argument("--root", type=Path, help="base directory for the paths in shots.json (default: current directory)")
     b.add_argument("--allow-missing", action="store_true", help="do not fail for shots without a recreation capture")
     b.add_argument("--metric-width", type=int, default=1280)
+    b.add_argument("--allow-aspect-mismatch", action="store_true", help="compare even when the aspect ratios differ")
     args = ap.parse_args()
     if args.cmd == "pair":
         for pth in (args.reference, args.recreation):

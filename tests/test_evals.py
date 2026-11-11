@@ -16,14 +16,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILL = ROOT / "skills" / "roblox-game-remaker"
-EVALS = json.loads((SKILL / "evals" / "evals.json").read_text())
-GENERATOR = (SKILL / "examples" / "demo" / "make_demo_footage.py").read_text()
+EVALS = json.loads((SKILL / "evals" / "evals.json").read_text(encoding="utf-8"))
+GENERATOR = (SKILL / "examples" / "demo" / "make_demo_footage.py").read_text(encoding="utf-8")
 
 
 def grade(text: str, eval_id: int) -> subprocess.CompletedProcess:
     with tempfile.TemporaryDirectory() as tmp:
         f = Path(tmp) / "r.txt"
-        f.write_text(text)
+        f.write_text(text, encoding="utf-8")
         return subprocess.run([sys.executable, str(SKILL / "evals" / "grade.py"), str(f), "--eval", str(eval_id)], capture_output=True, text=True)
 
 

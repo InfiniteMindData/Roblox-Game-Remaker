@@ -41,6 +41,30 @@ jobs:
       - name: Tests
         run: python -m unittest discover -s tests -v
 
+  windows:
+    # Most users run the skill on Windows: code pages, .cmd launchers and symlinks behave differently there.
+    name: Script tests and demo (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ffmpeg
+        run: choco install ffmpeg -y --no-progress
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Repository validator
+        run: python tools/validate_skill.py skills/roblox-game-remaker --strict --run-help
+      - name: Tests
+        env:
+          PYTHONUTF8: "0"  # keep the Windows default code page so encoding bugs show up
+        run: python -m unittest discover -s tests -v
+      - name: Demo pipeline
+        shell: bash
+        working-directory: skills/roblox-game-remaker
+        run: bash examples/demo/run_demo.sh "$RUNNER_TEMP/demo"
+
   luau:
     name: Luau template (StyLua, Selene, Lune, Rojo)
     runs-on: ubuntu-latest

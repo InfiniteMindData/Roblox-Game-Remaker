@@ -33,15 +33,22 @@ TOOLS = {
 }
 
 
-def version_of(cmd: list[str]) -> str | None:
-    if not shutil.which(cmd[0]):
-        return None
+def probe(cmd: list[str]) -> dict:
+    """Locate a tool and run its version command. "runs" is True only when the tool actually started."""
+    path = shutil.which(cmd[0])
+    if not path:
+        return {"path": None, "version": None, "runs": False}
     try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=20)
-    except (OSError, subprocess.TimeoutExpired):
-        return "found (version check failed)"
+        # Run the resolved path: Windows does not start .cmd/.bat launchers (such as blender.cmd) by bare name.
+        proc = subprocess.run([path, *cmd[1:]], capture_output=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return {"path": path, "version": "found (version check timed out)", "runs": False}
+    except OSError as exc:
+        return {"path": path, "version": f"found (could not start: {exc.strerror or exc})", "runs": False}
     text = (proc.stdout or proc.stderr).decode("utf-8", "replace").strip().splitlines()
-    return text[0][:100] if text else "found"
+    ok = proc.returncode == 0
+    version = (text[0][:100] if text else "found") if ok else f"found (exit {proc.returncode})"
+    return {"path": path, "version": version, "runs": ok}
 
 
 def main() -> int:
@@ -58,7 +65,7 @@ def main() -> int:
         except ImportError:
             report["packages"][pip_name] = None
     for name, (cmd, purpose) in TOOLS.items():
-        report["tools"][name] = {"version": version_of(cmd), "purpose": purpose}
+        report["tools"][name] = {**probe(cmd), "purpose": purpose}
 
     proj = args.project
     report["project"] = {
@@ -68,26 +75,34 @@ def main() -> int:
         "selene_toml": (proj / "selene.toml").is_file(),
     }
     py_ok = sys.version_info >= (3, 10) and all(report["packages"].values())
-    video_ok = bool(report["tools"]["ffmpeg"]["version"] and report["tools"]["ffprobe"]["version"])
+
+    def runs(name: str) -> bool:
+        return bool(report["tools"][name]["runs"])
+
+    video_ok = runs("ffmpeg") and runs("ffprobe")
     report["capabilities"] = {
         "image_scripts": py_ok,
         "video_scripts": py_ok and video_ok,
-        "luau_static_checks": bool(report["tools"]["stylua"]["version"] or report["tools"]["selene"]["version"]),
-        "luau_unit_tests": bool(report["tools"]["lune"]["version"]),
-        "place_builds": bool(report["tools"]["rojo"]["version"]),
-        "blender_export": bool(report["tools"]["blender"]["version"]),
+        "luau_static_checks": runs("stylua") or runs("selene"),
+        "luau_unit_tests": runs("lune"),
+        "place_builds": runs("rojo"),
+        "blender_export": runs("blender"),
     }
     advice = []
     if not py_ok:
         advice.append("Install Python packages: pip install -r scripts/requirements.txt (Python 3.10+).")
     if not video_ok:
         advice.append("Install ffmpeg (provides ffmpeg and ffprobe) for the video scripts.")
-    if not report["tools"]["rojo"]["version"]:
+    if not runs("rojo"):
         advice.append("Optional: Rojo (https://rojo.space) or `cargo install rojo` for file-based projects.")
-    if not report["tools"]["lune"]["version"]:
+    if not runs("lune"):
         advice.append("Optional: Lune (`cargo install lune`) to run the template's Luau unit tests.")
-    if not report["tools"]["blender"]["version"]:
-        advice.append("Blender not on PATH: give the user the Blender steps and scripts/blender_roblox_export.py to run.")
+    if not runs("blender"):
+        where = "found but did not start" if report["tools"]["blender"]["path"] else "not on PATH"
+        advice.append(f"Blender {where}: give the user the Blender steps and scripts/blender_roblox_export.py to run.")
+    for name, info in report["tools"].items():
+        if info["path"] and not info["runs"] and name != "blender":
+            advice.append(f"{name} is on PATH ({info['path']}) but did not start: {info['version']}.")
     advice.append("Check yourself: can you view images? Are Studio MCP tools (list_roblox_studios, execute_luau, screen_capture) available?")
     report["advice"] = advice
 

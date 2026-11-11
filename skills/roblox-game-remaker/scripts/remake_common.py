@@ -32,8 +32,18 @@ def fail(message: str, code: int = EXIT_USAGE) -> NoReturn:
     raise ToolError(message, code)
 
 
+def safe_console() -> None:
+    """Never crash on a character the console cannot encode (Windows code pages lack some symbols)."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):
+            pass
+
+
 def run_main(main) -> None:
     """Run a CLI main() and convert ToolError into a clean message and exit code."""
+    safe_console()
     try:
         code = main()
     except ToolError as exc:
@@ -80,9 +90,13 @@ def need_tool(tool: str) -> str:
 
 
 def run(cmd: Sequence[str], *, input_bytes: bytes | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    argv = list(cmd)
+    # Run the resolved path: on Windows, CreateProcess finds only .exe files by bare name, so a tool
+    # installed as a .cmd or .bat launcher (Blender, some package-manager shims) is missed otherwise.
+    argv[0] = which(argv[0]) or argv[0]
     try:
-        proc = subprocess.run(list(cmd), input=input_bytes, capture_output=True)
-    except FileNotFoundError:
+        proc = subprocess.run(argv, input=input_bytes, capture_output=True)
+    except (FileNotFoundError, PermissionError):
         fail(f"could not run '{cmd[0]}'")
     if check and proc.returncode != 0:
         stderr = proc.stderr.decode("utf-8", "replace").strip().splitlines()

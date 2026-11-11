@@ -39,10 +39,10 @@ class FidelityReportTests(unittest.TestCase):
         Image.fromarray(img).save(r / "captures" / "rec.png")
         shots = {"shots": [{"id": "SHOT-01", "reference": "remake/media/ref.png", "recreation": "remake/captures/rec.png",
                             "thresholds": {"ssim": 0.8, "delta_e_mean": 6.0}}]}
-        (r / "shots.json").write_text(json.dumps(shots))
+        (r / "shots.json").write_text(json.dumps(shots), encoding="utf-8")
         targets = {"metrics": {"jump_apex": {"target": 7.4, "tolerance": 0.3}, "ground_speed": {"target": 20, "tolerance_pct": 3}},
                    "clips": {"default": {"position_rms": 0.5}}}
-        (r / "targets.json").write_text(json.dumps(targets))
+        (r / "targets.json").write_text(json.dumps(targets), encoding="utf-8")
         (r / "logs").mkdir(exist_ok=True)
         MeasureCompareTests.make_log(None, r / "logs" / "run-01.log")
         write_track(self.proj / "ref.json", 60, 90, along=lambda t: ramp(t, 20, 0.25, 0.2))
@@ -63,7 +63,7 @@ class FidelityReportTests(unittest.TestCase):
     def test_scorecard_history_and_regression(self):
         self.iteration(1, 20.0)
         r = self.remake
-        history = [json.loads(ln) for ln in (r / "history.jsonl").read_text().splitlines()]
+        history = [json.loads(ln) for ln in (r / "history.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertEqual(len(history), 1)
         sysm = history[0]["systems"]
         self.assertEqual(sysm["shot:SHOT-01"]["status"], "pass")
@@ -71,20 +71,20 @@ class FidelityReportTests(unittest.TestCase):
         self.assertEqual(sysm["metric:jump_apex"]["status"], "pass")
         self.assertAlmostEqual(sysm["metric:jump_apex"]["r"], abs(sysm["metric:jump_apex"]["error"]) / 0.3, places=3)
         self.assertEqual(sysm["clip:run01"]["status"], "pass")
-        card = (r / "scorecard.md").read_text()
+        card = (r / "scorecard.md").read_text(encoding="utf-8")
         self.assertIn("| metric:jump_apex | pass |", card)
-        self.assertIn("## Iteration 1", (r / "diff-log.md").read_text())
+        self.assertIn("## Iteration 1", (r / "diff-log.md").read_text(encoding="utf-8"))
 
         # Iteration 2: a darker capture and a slower recreation. The shot and the clip regress.
         ImageEnhance.Brightness(Image.open(r / "captures" / "rec.png")).enhance(0.6).save(r / "captures" / "rec.png")
         proc = self.iteration(2, 17.0, code=1)
         self.assertIn("REGRESSION", proc.stderr)
-        latest = json.loads((r / "history.jsonl").read_text().splitlines()[-1])
+        latest = json.loads((r / "history.jsonl").read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual(latest["iteration"], 2)
         self.assertTrue(any(x.startswith("shot:SHOT-01") for x in latest["regressions"]))
         self.assertTrue(any(x.startswith("clip:run01") for x in latest["regressions"]))
         self.assertGreater(latest["systems"]["clip:run01"]["change"], 1.0)
-        self.assertIn("REGRESSIONS", (r / "diff-log.md").read_text())
+        self.assertIn("REGRESSIONS", (r / "diff-log.md").read_text(encoding="utf-8"))
 
         # remake_status reports the scorecard and holds the verify gate on the regression.
         st = json.loads(run("remake_status.py", r, "--json").stdout)
@@ -97,9 +97,9 @@ class FidelityReportTests(unittest.TestCase):
         self.assertIn("REGRESSION:", text)
 
         # A dry run writes nothing.
-        before = (r / "history.jsonl").read_text()
+        before = (r / "history.jsonl").read_text(encoding="utf-8")
         run("fidelity_report.py", r, "--dry-run")
-        self.assertEqual((r / "history.jsonl").read_text(), before)
+        self.assertEqual((r / "history.jsonl").read_text(encoding="utf-8"), before)
 
     def test_bad_input(self):
         self.assertEqual(run("fidelity_report.py", self.proj / "nope").returncode, 2)

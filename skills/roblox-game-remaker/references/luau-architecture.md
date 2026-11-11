@@ -20,6 +20,7 @@ src/shared/Remake/        -> ReplicatedStorage.Shared.Remake   (ModuleScripts)
   MovementMath.luau       acceleration ramps, coyote time and jump buffer logic (pure)
   Easing.luau             TweenService-equivalent curves plus cubic-bezier (pure)
   LightingPreset.luau     applies a measured lighting and post-processing preset
+  SimRecorder.luau        measurement log for custom simulations (no Humanoid): exact frame data
 src/server/               -> ServerScriptService.Remake
   Bootstrap.server.luau   applies world, character and lighting config on the server
 src/client/               -> StarterPlayer.StarterPlayerScripts.Remake
@@ -31,7 +32,7 @@ src/client/               -> StarterPlayer.StarterPlayerScripts.Remake
   Haptics.luau            HapticEffect presets and custom waveforms
   VRSupport.luau          VR hands and head tracking, snap turn, comfort hooks
   ShotCamera.luau         exact camera shots for reference comparison
-  DevTools/MeasurementHarness.luau   per-frame motion log for measure_compare.py (Studio only)
+  DevTools/MeasurementHarness.luau   per-frame Humanoid motion log for measure_compare.py (Studio only)
   DevTools/InputProbe.luau           logs every input, for verifying controller mappings
 tests/lune/               pure-module unit tests (run with `lune run tests/lune/run.luau`)
 tests/studio/             smoke test to run with MCP execute_luau or the Studio CLI

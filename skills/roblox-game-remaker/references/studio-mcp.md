@@ -54,8 +54,14 @@ have.
 
 ## 3. The remake loop over MCP
 
-1. **Inventory:** `search_game_tree` from `game` with depth 2, then `script_search` and
-   `script_grep` for existing systems. Never duplicate an existing controller.
+1. **Inventory:** `search_game_tree` from each content container (`Workspace`,
+   `ReplicatedStorage`, `ServerScriptService`, `ServerStorage`, `StarterPlayer`, `StarterGui`,
+   `Lighting`) with depth 2-3, not from `game`: the root holds over 100 engine services, which
+   fill the result limit before any of the place's own content. Then `script_search` and
+   `script_grep` for existing systems. Never duplicate an existing controller. Note whether the
+   player has a Humanoid character at all: many games (fighting games, top-down and vehicle games)
+   drive their own rigs from a custom simulation, and need `SimRecorder` rather than the
+   `MeasurementHarness` in step 5.
 2. **Write code:** `multi_edit` into the paths from the template layout. If the project uses Rojo,
    edit the files on disk instead, because Rojo overwrites Studio-side edits of synced scripts.
 3. **Build geometry deterministically:** write the level's metric layout as JSON and generate the
@@ -67,12 +73,27 @@ have.
    press `Space`) → `get_console_output` for harness lines → `start_stop_play` to stop.
 5. **Measure:** save the console output, clean it with
    `scripts/studio_snippets.py extract-log console.txt --out remake/logs/run-NN.log` (it also
-   summarizes `REMAKE_SMOKE` results), and run `scripts/measure_compare.py` on it.
+   summarizes `REMAKE_SMOKE` results), and run `scripts/measure_compare.py` on it. The
+   `MeasurementHarness` follows the local player's Humanoid only. When motion comes from the game's
+   own simulation, call the template's `Remake/SimRecorder` from the simulation step (client or
+   server) and run `measure_compare.py run.log --subject p1 --interval startup=attack..active`;
+   targets with `"unit": "frames"` are judged in simulation ticks. A log with no motion samples
+   fails instead of passing.
 6. **Capture shots:** `screen_capture` with the shot's camera position and look-at. For an exact
    FOV and hidden UI, first run the snippet from `studio_snippets.py apply-shot remake/shots.json --id SHOT-03`
    with `execute_luau` (Client, during play), then capture. `studio_snippets.py shots` generates the
    `Shots` module for the F7/F8 hotkeys.
-7. **Compare:** save the capture as `remake/captures/<shot>.png`, then run `scripts/visual_compare.py`.
+7. **Compare:** save the capture under `remake/captures/`, then run `scripts/visual_compare.py`.
+   `screen_capture` returns a **JPEG at the viewport's size**, not a lossless frame at the reference
+   resolution. Renaming it `.png` changes nothing. Two consequences:
+   - **Aspect ratio:** a docked Studio viewport is rarely 16:9 (1581x615 is typical).
+     `visual_compare.py` fails a pair whose aspect ratios differ by more than 1% instead of
+     stretching it. Undock or resize the viewport, or use Studio's device emulator at the
+     reference resolution, before capturing.
+   - **Compression:** JPEG alone costs about 1-1.5 mean delta E (around 4 at the 95th percentile),
+     so leave that headroom in `delta_e_mean` thresholds, or ask the user for lossless screenshots
+     for color-critical shots.
+   A pair with no thresholds reports `unchecked`, never `pass`.
 8. **Assets:** `search_asset` and `insert_asset` only for assets the user has rights to use
    (their own inventory, or Creator Store assets whose terms permit it). Inspect inserted models'
    descendants for scripts before keeping them. AI-generated meshes and materials are placeholders

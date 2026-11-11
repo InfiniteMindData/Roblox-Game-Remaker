@@ -27,7 +27,7 @@ def run(script: str, *args) -> subprocess.CompletedProcess:
 
 class CurveFormulaTests(unittest.TestCase):
     def test_every_template_curve_is_fitted(self):
-        luau = (SKILL / "assets" / "rojo-template" / "src" / "shared" / "Remake" / "Easing.luau").read_text()
+        luau = (SKILL / "assets" / "rojo-template" / "src" / "shared" / "Remake" / "Easing.luau").read_text(encoding="utf-8")
         block = luau[luau.index("local IN"):luau.index("function Easing.get")]
         names = set(re.findall(r"^\t([A-Z][A-Za-z]+) = function", block, re.M))
         self.assertEqual(names, {"Linear", *fit_curve.STYLES})
@@ -60,7 +60,7 @@ class FitTests(unittest.TestCase):
 
     def fit(self, t, y, *extra, code=0):
         path = self.dir / "track.json"
-        path.write_text(json.dumps({"tool": "motion_track", "samples": [{"t": float(a), "x_px": float(b)} for a, b in zip(t, y)]}))
+        path.write_text(json.dumps({"tool": "motion_track", "samples": [{"t": float(a), "x_px": float(b)} for a, b in zip(t, y)]}), encoding="utf-8")
         proc = run("fit_curve.py", "--track", path, "--field", "x_px", "--json", *extra)
         self.assertEqual(proc.returncode, code, proc.stderr)
         return json.loads(proc.stdout) if code == 0 else proc
@@ -111,7 +111,7 @@ class FitTests(unittest.TestCase):
     def test_luau_output_and_ledger_import(self):
         t = np.arange(0, 1.0, 1 / 60)
         y = 10 + 200 * fit_curve.ease("Quad", "Out", (t - 0.1) / 0.3)
-        (self.dir / "s.csv").write_text("time,x\n" + "".join(f"{a},{b}\n" for a, b in zip(t, y)))
+        (self.dir / "s.csv").write_text("time,x\n" + "".join(f"{a},{b}\n" for a, b in zip(t, y)), encoding="utf-8")
         proc = run("fit_curve.py", "--csv", self.dir / "s.csv", "--columns", "time,x", "--luau", "--out", self.dir / "fit.json")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("TweenInfo.new(0.3", proc.stdout)
@@ -120,7 +120,7 @@ class FitTests(unittest.TestCase):
         ev = run("ledger.py", "add-evidence", self.dir / "remake", "--type", "video", "--title", "menu", "--source", "m.mp4",
                  "--analysis", "fit_curve").stdout.strip()
         self.assertEqual(run("ledger.py", "import", self.dir / "remake", self.dir / "fit.json", "--evidence", ev).returncode, 0)
-        ms = json.loads((self.dir / "remake" / "measurements.json").read_text())["measurements"]
+        ms = json.loads((self.dir / "remake" / "measurements.json").read_text(encoding="utf-8"))["measurements"]
         self.assertEqual(ms[0]["metric"], "curve_duration")
         self.assertIn("Quad Out", ms[0]["what"])
 
@@ -129,7 +129,7 @@ class FitTests(unittest.TestCase):
         flat = ";".join(f"{i / 60},5" for i in range(30))
         self.assertEqual(run("fit_curve.py", "--points", flat).returncode, 1)
         self.assertEqual(run("fit_curve.py", "--points", flat, "--csv", "x.csv").returncode, 2)
-        (self.dir / "t.json").write_text(json.dumps({"samples": [{"t": i / 60, "u": i} for i in range(30)]}))
+        (self.dir / "t.json").write_text(json.dumps({"samples": [{"t": i / 60, "u": i} for i in range(30)]}), encoding="utf-8")
         self.assertEqual(run("fit_curve.py", "--track", self.dir / "t.json", "--field", "nope").returncode, 2)
         self.assertEqual(run("fit_curve.py", "--track", self.dir / "t.json").returncode, 2)
 

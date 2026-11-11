@@ -39,9 +39,9 @@ class EndToEndTests(unittest.TestCase):
             # Recipe 1: start
             run("breakdown_init.py", proj, "--game", "E2E Hop", "--version", "1.0", "--platform", "PC")
             self.assertEqual(self.phase(), 0)
-            intake = (remake / "00-intake.md").read_text()
+            intake = (remake / "00-intake.md").read_text(encoding="utf-8")
             intake = intake.replace("- [ ] Own IP", "- [x] Own IP").replace("- Vertical slice (first deliverable):", "- Vertical slice (first deliverable): level 1")
-            (remake / "00-intake.md").write_text(intake)
+            (remake / "00-intake.md").write_text(intake, encoding="utf-8")
             subprocess.run([sys.executable, str(SKILL / "examples" / "demo" / "make_demo_footage.py"), "--out", str(remake / "media")],
                            check=True, capture_output=True)
             ev_jump = run("ledger.py", "add-evidence", remake, "--type", "video", "--title", "jump", "--source", "remake/media/demo_jump.mkv",
@@ -65,13 +65,13 @@ class EndToEndTests(unittest.TestCase):
                 run("motion_track.py", remake / "frames" / clip / "manifest.json", *args, "--px-per-unit", ppu,
                     "--analyze", analyze, "--out", remake / "tracks" / f"{clip}.json")
                 run("ledger.py", "import-track", remake, remake / "tracks" / f"{clip}.json", "--evidence", ev)
-            ms = {m["metric"]: m for m in json.loads((remake / "measurements.json").read_text())["measurements"]}
+            ms = {m["metric"]: m for m in json.loads((remake / "measurements.json").read_text(encoding="utf-8"))["measurements"]}
             self.assertAlmostEqual(ms["jump_apex"]["value"], 8.0, delta=0.1)
             self.assertAlmostEqual(ms["ground_speed"]["value"], 20.0, delta=0.3)
             shots = {"schema": 1, "reference_resolution": [1920, 1080], "shots": [{
                 "id": "SHOT-HUD", "evidence": ev_hud, "reference": "remake/media/demo_hud.png", "recreation": "remake/captures/SHOT-HUD.png",
                 "camera": {"position": [0, 12, 30], "look_at": [0, 4, 0], "fov": 58.7155}, "thresholds": {"edge_iou": 0.5}}]}
-            (remake / "shots.json").write_text(json.dumps(shots))
+            (remake / "shots.json").write_text(json.dumps(shots), encoding="utf-8")
             self.assertEqual(self.phase(), 3)
 
             # Breakdown citing the ledger
@@ -88,7 +88,7 @@ class EndToEndTests(unittest.TestCase):
                 text += f"### {eid}: {title}\n- status: {status}\n- evidence: {evidence}\n"
                 text += f"- value: {value}\n" if value else ""
                 text += "- roblox: Config values from the ledger\n- accept: measure_compare within tier A\n\n"
-            (remake / "breakdown.md").write_text(text)
+            (remake / "breakdown.md").write_text(text, encoding="utf-8")
             run("breakdown_check.py", remake, "--strict")
             self.assertEqual(self.phase(), 4)
             run("ledger.py", "targets", remake, "--tier", "A")
@@ -102,7 +102,7 @@ class EndToEndTests(unittest.TestCase):
             run("preset.py", "apply", "platformer", "--config", cfg, "--in-place")
             jump = json.loads(run("remake_calc.py", "jump", "--apex", ms["jump_apex"]["value"], "--rise-time", ms["jump_rise_time"]["value"],
                                   "--fall-time", ms["jump_fall_time"]["value"], "--json").stdout)
-            c = cfg.read_text()
+            c = cfg.read_text(encoding="utf-8")
             for key, val in (("WalkSpeed", round(ms["ground_speed"]["value"], 2)), ("JumpApex", round(ms["jump_apex"]["value"], 3)),
                              ("Gravity", round(jump["g_rise"], 3))):
                 lines = c.split("\n")
@@ -113,7 +113,7 @@ class EndToEndTests(unittest.TestCase):
             c = c.replace('\t["Movement.JumpApex"] = "ASSUMED: preset platformer",', f'\t["Movement.JumpApex"] = "{ms["jump_apex"]["id"]}",')
             c = c.replace('\t["World.Gravity"] = "ASSUMED: preset platformer",',
                           f'\t["World.Gravity"] = "derived: {ms["jump_apex"]["id"]}, {ms["jump_rise_time"]["id"]} (remake_calc jump)",')
-            cfg.write_text(c)
+            cfg.write_text(c, encoding="utf-8")
             check = json.loads(run("config_check.py", remake, "--json").stdout)
             self.assertEqual(check["error_count"], 0, check["errors"])
             self.assertEqual(check["summary"]["direct_matches"], 2)
@@ -124,9 +124,9 @@ class EndToEndTests(unittest.TestCase):
             # Recipe 9: greybox
             layout = {"unit": "studs", "parts": [{"name": "Floor", "size": [64, 1, 64], "position": [0, -0.5, 0]},
                                                  {"name": "Gap", "size": [8, 1, 8], "position": [20, 4, 0]}], "spawn": [0, 1, 0]}
-            (remake / "layout.json").write_text(json.dumps(layout))
+            (remake / "layout.json").write_text(json.dumps(layout), encoding="utf-8")
             run("studio_snippets.py", "greybox", remake / "layout.json", "--out", remake / "greybox.luau")
-            self.assertIn('part("Gap"', (remake / "greybox.luau").read_text())
+            self.assertIn('part("Gap"', (remake / "greybox.luau").read_text(encoding="utf-8"))
 
             # Verify: a harness log consistent with the measured jump and run, plus a shot comparison
             dt, g_r, g_f = 1 / 60, jump["g_rise"], jump["g_fall"]
@@ -153,7 +153,7 @@ class EndToEndTests(unittest.TestCase):
                 if len(batch) == 30:
                     lines.append("REMAKE_MEASURE " + json.dumps({"k": "b", "s": batch}))
                     batch = []
-            (proj / "console.txt").write_text("\n".join(f"12:00:00.000  {ln}  -  Client" for ln in lines) + "\n")
+            (proj / "console.txt").write_text("\n".join(f"12:00:00.000  {ln}  -  Client" for ln in lines) + "\n", encoding="utf-8")
             run("studio_snippets.py", "extract-log", proj / "console.txt", "--out", remake / "logs" / "run-01.log")
             run("measure_compare.py", remake / "logs" / "run-01.log", "--targets", remake / "targets.json", "--allow-missing")
             shutil.copy(remake / "media" / "demo_hud_rec.png", remake / "captures" / "SHOT-HUD.png")
@@ -161,16 +161,16 @@ class EndToEndTests(unittest.TestCase):
             self.assertEqual(self.phase(), 6)  # no iteration logged yet
             # Recipe 16: score the iteration; it writes history, the scorecard and the diff-log entry.
             run("fidelity_report.py", remake, "--diff-log", "--label", "measured values in Config")
-            self.assertIn("- after: ", (remake / "diff-log.md").read_text())
-            self.assertIn("| metric:jump_apex | pass |", (remake / "scorecard.md").read_text())
+            self.assertIn("- after: ", (remake / "diff-log.md").read_text(encoding="utf-8"))
+            self.assertIn("| metric:jump_apex | pass |", (remake / "scorecard.md").read_text(encoding="utf-8"))
             self.assertEqual(self.phase(), 7)
-            report = (remake / "delivery-report.md").read_text().replace(
+            report = (remake / "delivery-report.md").read_text(encoding="utf-8").replace(
                 "|---|---|---|---|---|\n", "|---|---|---|---|---|\n| MOVE-002 | apex ±0.56 | 8.0 | pass | logs/run-01.log |\n", 1)
-            (remake / "delivery-report.md").write_text(report)
+            (remake / "delivery-report.md").write_text(report, encoding="utf-8")
             self.assertEqual(self.phase(), 8)
             status = run("remake_status.py", remake, "--write").stdout
             self.assertIn("All gates pass", status)
-            self.assertIn("speedrun", (remake / "STATUS.md").read_text())
+            self.assertIn("speedrun", (remake / "STATUS.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

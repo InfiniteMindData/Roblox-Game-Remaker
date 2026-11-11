@@ -70,7 +70,7 @@ class EventTableTests(unittest.TestCase):
         # XP per level: 100 * 1.15^(level - 1)
         for lv in range(1, 11):
             rows.append({"frame": 6000 + lv, "event": "level_up", "xp": round(100 * 1.15 ** (lv - 1), 2)})
-        with open(self.dir / "events.csv", "w", newline="") as fh:
+        with open(self.dir / "events.csv", "w", newline="", encoding="utf-8") as fh:
             w = csv.DictWriter(fh, fieldnames=["frame", "event", "entity", "loot", "xp"])
             w.writeheader()
             for r in rows:
@@ -152,16 +152,16 @@ class EventTableTests(unittest.TestCase):
                  "--analysis", "event table").stdout.strip()
         proc = run("ledger.py", "import", self.dir / "remake", out, "--evidence", ev)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        ms = json.loads((self.dir / "remake" / "measurements.json").read_text())["measurements"]
+        ms = json.loads((self.dir / "remake" / "measurements.json").read_text(encoding="utf-8"))["measurements"]
         rate = next(m for m in ms if m["metric"] == "rate_drop_per_kill")
         self.assertEqual((rate["successes"], rate["trials"]), (6, 40))
         self.assertEqual(len(rate["interval"]), 2)
         run("ledger.py", "targets", self.dir / "remake")
-        self.assertNotIn("rate_drop_per_kill", json.loads((self.dir / "remake" / "targets.json").read_text())["metrics"])
+        self.assertNotIn("rate_drop_per_kill", json.loads((self.dir / "remake" / "targets.json").read_text(encoding="utf-8"))["metrics"])
         self.assertEqual(run("event_stats.py", "--counts", "5/3").returncode, 2)
         self.assertEqual(run("event_stats.py", "--counts", "x").returncode, 2)
         self.assertEqual(run("event_stats.py").returncode, 2)
-        (self.dir / "bad.csv").write_text("time,what\n1,spawn\n")
+        (self.dir / "bad.csv").write_text("time,what\n1,spawn\n", encoding="utf-8")
         self.assertEqual(run("event_stats.py", self.dir / "bad.csv").returncode, 2)
         self.assertEqual(run("event_stats.py", self.dir / "events.csv").returncode, 2)  # frames without --fps
         self.assertEqual(run("event_stats.py", self.dir / "events.csv", "--fps", "60", "--rate", "kill/drop").returncode, 2)

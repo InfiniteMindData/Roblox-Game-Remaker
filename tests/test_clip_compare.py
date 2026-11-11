@@ -44,7 +44,7 @@ def jump(t, apex, rise, fall, t0):
 def write_track(path: Path, fps: float, n: int, along=lambda t: 0.0, up=lambda t: 0.0, unit="studs"):
     samples = [{"sample": i, "index": i, "t": round(i / fps, 6), "x_px": 0, "y_px": 0, "score": 1.0,
                 "u": round(along(i / fps), 6), "v": round(up(i / fps), 6)} for i in range(n)]
-    path.write_text(json.dumps({"tool": "motion_track", "unit": unit, "samples": samples, "low_score_samples": 0}))
+    path.write_text(json.dumps({"tool": "motion_track", "unit": unit, "samples": samples, "low_score_samples": 0}), encoding="utf-8")
     return path
 
 
@@ -54,7 +54,7 @@ def write_log(path: Path, fps: float, n: int, along, up, heading_deg=0.0):
     rows = [[round(i / fps, 4), round(5 + hx * along(i / fps), 4), round(3 + up(i / fps), 4), round(-2 + hz * along(i / fps), 4),
              0, 0, 0, 1, 1.0] for i in range(n)]
     lines = ["REMAKE_MEASURE " + json.dumps({"k": "b", "s": rows[i:i + 30]}) for i in range(0, n, 30)]
-    path.write_text("\n".join(f"12:00:00.000  {ln}  -  Client" for ln in lines) + "\n")
+    path.write_text("\n".join(f"12:00:00.000  {ln}  -  Client" for ln in lines) + "\n", encoding="utf-8")
     return path
 
 
@@ -106,7 +106,7 @@ class ClipCompareTests(unittest.TestCase):
         self.assertAlmostEqual(ev["apex"]["offset_s"], -0.02, delta=ev["apex"]["precision_s"])
         self.assertAlmostEqual(ev["landing"]["offset_s"], (0.38 + 0.3) - (0.4 + 0.283), delta=0.03)
         targets = {"clips": {"default": {"position_rms_pct": 1, "event_offset_frames": 2}, "loose": {"position_rms_pct": 20}}}
-        (self.dir / "targets.json").write_text(json.dumps(targets))
+        (self.dir / "targets.json").write_text(json.dumps(targets), encoding="utf-8")
         failed = self.compare(ref, rec, "--targets", self.dir / "targets.json", code=1)
         self.assertTrue(any("position rms" in f for f in failed["failures"]))
         self.assertAlmostEqual(failed["tolerances"]["position_rms"], 0.08, delta=0.001)  # 1% of 8 studs of travel
@@ -122,7 +122,7 @@ class ClipCompareTests(unittest.TestCase):
         self.assertLess(rep["position_rms"], 1e-4)
         samples = [{"t": round(i / 60, 6), "index": i, "X": 3 + 0.6 * ramp(i / 60, 12, 0.3, 0.25), "Z": 7 + 0.8 * ramp(i / 60, 12, 0.3, 0.25)}
                    for i in range(90)]
-        (self.dir / "ground.json").write_text(json.dumps({"tool": "camera_solve", "unit": "studs", "track": {"samples": samples}}))
+        (self.dir / "ground.json").write_text(json.dumps({"tool": "camera_solve", "unit": "studs", "track": {"samples": samples}}), encoding="utf-8")
         rep2 = self.compare(self.dir / "ground.json", ref)
         # Orientation-independent "along"; a start from rest pins the onset to a fraction of a millisecond.
         self.assertLess(rep2["position_rms"], rep2["floor"] / 20)
@@ -136,7 +136,7 @@ class ClipCompareTests(unittest.TestCase):
         self.assertEqual(run("clip_compare.py", ref, self.dir / "missing.json").returncode, 2)
         short = write_track(self.dir / "short.json", 60, 3, along=lambda t: t)
         self.assertEqual(run("clip_compare.py", ref, short).returncode, 2)
-        (self.dir / "manifest.json").write_text(json.dumps({"frames": [{"index": i, "pts_time": i / 60, "file": "a.png"} for i in range(6)]}))
+        (self.dir / "manifest.json").write_text(json.dumps({"frames": [{"index": i, "pts_time": i / 60, "file": "a.png"} for i in range(6)]}), encoding="utf-8")
         proc = run("clip_compare.py", self.dir / "manifest.json", ref)
         self.assertEqual(proc.returncode, 2)
         self.assertIn("--ref-bbox", proc.stderr)

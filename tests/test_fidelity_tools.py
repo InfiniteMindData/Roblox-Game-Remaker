@@ -60,19 +60,19 @@ class PoseTrackTests(unittest.TestCase):
                        "--point", f"foot={round(f0[0])},{round(f0[1])}", "--patch", "14", "--joint", "knee=hip,knee,foot",
                        "--segment", "thigh=hip,knee", "--cycle", "foot.x", "--out", d / "pose.json", "--table", d / "keys.md")
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            pose = json.loads((d / "pose.json").read_text())
+            pose = json.loads((d / "pose.json").read_text(encoding="utf-8"))
             thigh_err = max(abs(r["thigh"] - t[0]) for r, t in zip(pose["samples"], truth))
             knee_err = max(abs(r["knee"] - t[1]) for r, t in zip(pose["samples"], truth))
             self.assertLess(thigh_err, 1.5)
             self.assertLess(knee_err, 2.0)
             self.assertAlmostEqual(pose["cycle"]["period_frames"], 30, delta=0.5)
-            self.assertIn("| frame | t (s) | key | knee | thigh |", (d / "keys.md").read_text())
+            self.assertIn("| frame | t (s) | key | knee | thigh |", (d / "keys.md").read_text(encoding="utf-8"))
 
     def test_rejects_unknown_points(self):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
             Image.new("RGB", (64, 64)).save(d / "a.png")
-            (d / "manifest.json").write_text(json.dumps({"frames": [{"index": i, "pts_time": i / 60, "file": "a.png"} for i in range(3)]}))
+            (d / "manifest.json").write_text(json.dumps({"frames": [{"index": i, "pts_time": i / 60, "file": "a.png"} for i in range(3)]}), encoding="utf-8")
             proc = run("pose_track.py", d / "manifest.json", "--point", "a=30,30", "--joint", "k=a,b,c")
             self.assertEqual(proc.returncode, 2)
             self.assertIn("unknown point", proc.stderr)
@@ -102,7 +102,7 @@ class OverlayTests(unittest.TestCase):
                 im[10:20, 5 + 10 * i:15 + 10 * i] = 255
                 Image.fromarray(im).save(d / f"o{i}.png")
                 frames.append({"index": i, "pts_time": i / 60, "file": f"o{i}.png"})
-            (d / "manifest.json").write_text(json.dumps({"frames": frames}))
+            (d / "manifest.json").write_text(json.dumps({"frames": frames}), encoding="utf-8")
             self.assertEqual(run("overlay.py", "onion", d / "manifest.json", "--out", d / "onion.png").returncode, 0)
 
 
@@ -119,15 +119,15 @@ class StudioSnippetTests(unittest.TestCase):
             {"name": "Floor", "size": [20, 0.5, 20], "position": [0, -0.25, 0], "color": "#6E8B5A", "material": "Grass"},
             {"name": "Platform", "size": [3, 0.5, 3], "position": [5, 1.5, 0], "rotation": [0, 45, 0]}],
             "spawn": [0, 0.5, 0]}
-        (self.dir / "layout.json").write_text(json.dumps(layout))
+        (self.dir / "layout.json").write_text(json.dumps(layout), encoding="utf-8")
         return self.dir / "layout.json"
 
     def test_greybox_validation(self):
         path = self.layout()
         self.assertEqual(run("studio_snippets.py", "greybox", path, "--out", self.dir / "g.luau").returncode, 2)  # meters need a scale
-        bad = json.loads(path.read_text())
+        bad = json.loads(path.read_text(encoding="utf-8"))
         bad["parts"][0]["material"] = "Lava"
-        (self.dir / "bad.json").write_text(json.dumps(bad))
+        (self.dir / "bad.json").write_text(json.dumps(bad), encoding="utf-8")
         self.assertEqual(run("studio_snippets.py", "greybox", self.dir / "bad.json", "--out", self.dir / "g.luau",
                              "--studs-per-meter", "3.5714").returncode, 2)
 
@@ -135,12 +135,12 @@ class StudioSnippetTests(unittest.TestCase):
     def test_greybox_runs_in_lune(self):
         out = self.dir / "greybox.luau"
         self.assertEqual(run("studio_snippets.py", "greybox", self.layout(), "--out", out, "--studs-per-meter", "3.5714").returncode, 0)
-        body = out.read_text()
+        body = out.read_text(encoding="utf-8")
         script = self.dir / "run.luau"
         script.write_text(LUNE_PRELUDE + "local function build()\n" + body + "end\n"
                           "local n = build(); build()\n"
                           'local f = game:GetService("Workspace"):FindFirstChild("Level_Greybox")\n'
-                          'print(n, #game:GetService("Workspace"):GetChildren(), f.Platform.Size.X, f.Floor.Material.Name)\n')
+                          'print(n, #game:GetService("Workspace"):GetChildren(), f.Platform.Size.X, f.Floor.Material.Name)\n', encoding="utf-8")
         proc = subprocess.run(["lune", "run", str(script)], capture_output=True, text=True, timeout=120)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         last = proc.stdout.strip().splitlines()[-1].split()
@@ -152,7 +152,7 @@ class StudioSnippetTests(unittest.TestCase):
     def test_shots_and_apply(self):
         out = self.dir / "Shots.luau"
         self.assertEqual(run("studio_snippets.py", "shots", SAMPLE / "shots.json", "--out", out).returncode, 0)
-        self.assertIn('id = "SHOT-HUD"', out.read_text())
+        self.assertIn('id = "SHOT-HUD"', out.read_text(encoding="utf-8"))
         proc = run("studio_snippets.py", "apply-shot", SAMPLE / "shots.json", "--id", "SHOT-HUD")
         self.assertIn("ShotCamera.apply({", proc.stdout)
         self.assertEqual(run("studio_snippets.py", "apply-shot", SAMPLE / "shots.json", "--id", "NOPE").returncode, 2)
@@ -166,10 +166,10 @@ class StudioSnippetTests(unittest.TestCase):
             "06:01:02.101  REMAKE_SMOKE FAIL Bootstrap ran  -  Server\n"
             "06:01:03.000  unrelated\n"
             '06:01:04.100  REMAKE_INPUT {"e":"began","kc":"ButtonR2","ut":"Gamepad1","pos":[0,0,0.62],"gp":false}  -  Client\n'
-            '06:01:04.200  REMAKE_INPUT {"e":"changed","kc":"ButtonR2","ut":"Gamepad1","pos":[0,0,1.0],"gp":false}  -  Client\n')
+            '06:01:04.200  REMAKE_INPUT {"e":"changed","kc":"ButtonR2","ut":"Gamepad1","pos":[0,0,1.0],"gp":false}  -  Client\n', encoding="utf-8")
         proc = run("studio_snippets.py", "extract-log", console, "--out", self.dir / "run.log")
         self.assertEqual(proc.returncode, 1)  # a smoke check failed
-        log = (self.dir / "run.log").read_text().splitlines()
+        log = (self.dir / "run.log").read_text(encoding="utf-8").splitlines()
         self.assertEqual(log[1], "REMAKE_SMOKE FAIL Bootstrap ran")
         self.assertEqual(len(log), 4)
         table = run("studio_snippets.py", "inputs", self.dir / "run.log").stdout
@@ -183,7 +183,7 @@ class OfflineLintTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         with tempfile.TemporaryDirectory() as tmp:
             bad = Path(tmp) / "bad.luau"
-            bad.write_text("wait(1)\n")
+            bad.write_text("wait(1)\n", encoding="utf-8")
             proc = subprocess.run(["selene", "--config", "selene.offline.toml", str(bad)], cwd=TEMPLATE, capture_output=True, text=True)
             self.assertNotEqual(proc.returncode, 0)
             self.assertIn("`wait` is not defined", proc.stdout + proc.stderr)

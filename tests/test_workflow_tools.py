@@ -45,7 +45,7 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(bad.returncode, 2)
         self.assertIn("inaccessible", bad.stderr)
         self.assertEqual(run("ledger.py", "targets", self.remake, "--tier", "S").returncode, 0)
-        t = json.loads((self.remake / "targets.json").read_text())["metrics"]["jump_apex"]
+        t = json.loads((self.remake / "targets.json").read_text(encoding="utf-8"))["metrics"]["jump_apex"]
         self.assertEqual(t["target"], 8.0)
         self.assertAlmostEqual(t["tolerance"], 0.24, places=6)  # 3% beats the 0.1 uncertainty
         self.assertEqual(run("breakdown_check.py", self.remake).returncode, 0)
@@ -56,15 +56,15 @@ class LedgerTests(unittest.TestCase):
                  "jump": {"segment_samples": [0, 2], "apex_height": 8.0, "rise_time_s": 0.4, "fall_time_s": 0.28,
                           "airtime_s": 0.68, "g_rise": 100, "g_rise_std": 0.5, "g_fall": 200, "g_fall_std": 1.0,
                           "fit_rms": 0.01, "time_precision_s": 1 / 60, "method": "piecewise"}}
-        (self.proj / "t.json").write_text(json.dumps(track))
+        (self.proj / "t.json").write_text(json.dumps(track), encoding="utf-8")
         ev = run("ledger.py", "add-evidence", self.remake, "--type", "video", "--title", "j", "--source", "j", "--analysis", "a").stdout.strip()
         proc = run("ledger.py", "import-track", self.remake, self.proj / "t.json", "--evidence", ev)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        ms = json.loads((self.remake / "measurements.json").read_text())["measurements"]
+        ms = json.loads((self.remake / "measurements.json").read_text(encoding="utf-8"))["measurements"]
         self.assertEqual([m["metric"] for m in ms], ["jump_apex", "jump_rise_time", "jump_fall_time", "jump_airtime", "g_rise", "g_fall"])
         self.assertEqual(ms[0]["frames"], [10, 50])
         run("ledger.py", "targets", self.remake)
-        metrics = json.loads((self.remake / "targets.json").read_text())["metrics"]
+        metrics = json.loads((self.remake / "targets.json").read_text(encoding="utf-8"))["metrics"]
         self.assertNotIn("g_rise", metrics)
         self.assertAlmostEqual(metrics["jump_rise_time"]["tolerance"], 2 / 60, places=4)
 
@@ -78,10 +78,10 @@ class ConfigCheckTests(unittest.TestCase):
     def test_detects_drift_and_bad_ids(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "Config.luau"
-            text = (SAMPLE / "src" / "shared" / "Remake" / "Config.luau").read_text()
+            text = (SAMPLE / "src" / "shared" / "Remake" / "Config.luau").read_text(encoding="utf-8")
             text = text.replace("WalkSpeed = 20, -- MS-004", "WalkSpeed = 24, -- MS-004")
             text = text.replace('["Movement.JumpApex"] = "MS-001",', '["Movement.JumpApex"] = "MS-001",\n\t["Movement.AirJumps"] = "MS-777",\n\t["Movement.JumpBuffer2"] = "ASSUMED: guess",')
-            cfg.write_text(text)
+            cfg.write_text(text, encoding="utf-8")
             proc = run("config_check.py", SAMPLE / "remake", "--config", cfg, "--json")
             self.assertEqual(proc.returncode, 1)
             data = json.loads(proc.stdout)
@@ -158,7 +158,7 @@ class FrameToolTests(unittest.TestCase):
         anchor = ",".join(map(str, data["anchor_bbox"]))
         run("motion_track.py", self.dir / "run" / "manifest.json", "--bbox", bbox, "--anchor-bbox", anchor, "--search", "40",
             "--px-per-unit", "20", "--analyze", "speed", "--out", self.dir / "s.json")
-        s = json.loads((self.dir / "s.json").read_text())["speed"]
+        s = json.loads((self.dir / "s.json").read_text(encoding="utf-8"))["speed"]
         self.assertAlmostEqual(s["steady_speed"], 20, delta=0.3)
 
     def test_frame_zoom(self):
@@ -184,7 +184,7 @@ class PresetTests(unittest.TestCase):
             proc = run("preset.py", "apply", "platformer", "--config", sample_cfg, "--out", out)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertIn("kept Movement.WalkSpeed (backed by MS-004)", proc.stdout)
-            text = out.read_text()
+            text = out.read_text(encoding="utf-8")
             self.assertIn("WalkSpeed = 20, -- MS-004", text)
             self.assertIn("AirControl = 0.75, -- ASSUMED preset platformer", text)
             check = json.loads(run("config_check.py", SAMPLE / "remake", "--config", out, "--json").stdout)
@@ -193,16 +193,16 @@ class PresetTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("lune"), "lune not installed")
     def test_every_preset_yields_loadable_config(self):
-        presets = json.loads((SKILL / "assets" / "presets" / "presets.json").read_text())["presets"]
+        presets = json.loads((SKILL / "assets" / "presets" / "presets.json").read_text(encoding="utf-8"))["presets"]
         for name in presets:
             with tempfile.TemporaryDirectory() as tmp:
                 out = Path(tmp) / "Config.luau"
                 self.assertEqual(run("preset.py", "apply", name, "--config", TEMPLATE_CONFIG, "--out", out).returncode, 0)
-                body = out.read_text().replace("--!strict", "").replace("return Config", "")
+                body = out.read_text(encoding="utf-8").replace("--!strict", "").replace("return Config", "")
                 script = Path(tmp) / "load.luau"
                 script.write_text('local roblox = require("@lune/roblox")\n'
                                   "local Vector3, Vector2, Color3 = roblox.Vector3, roblox.Vector2, roblox.Color3\n"
-                                  + body + "\nprint(Config.Camera.Mode, Config.Movement.WalkSpeed)\n")
+                                  + body + "\nprint(Config.Camera.Mode, Config.Movement.WalkSpeed)\n", encoding="utf-8")
                 proc = subprocess.run(["lune", "run", str(script)], capture_output=True, text=True, timeout=120)
                 self.assertEqual(proc.returncode, 0, f"{name}: {proc.stderr}")
                 self.assertEqual(proc.stdout.split()[0], presets[name]["values"].get("Camera.Mode", "Default"))
@@ -213,7 +213,7 @@ class PresetTests(unittest.TestCase):
 
 class EvalTests(unittest.TestCase):
     def test_evals_file_and_grader(self):
-        data = json.loads((SKILL / "evals" / "evals.json").read_text())
+        data = json.loads((SKILL / "evals" / "evals.json").read_text(encoding="utf-8"))
         self.assertEqual(data["skill_name"], "roblox-game-remaker")
         ids = [e["id"] for e in data["evals"]]
         self.assertEqual(len(ids), len(set(ids)))
@@ -221,9 +221,9 @@ class EvalTests(unittest.TestCase):
             self.assertTrue(e["prompt"] and e["expected_output"] and e["assertions"], e["name"])
         with tempfile.TemporaryDirectory() as tmp:
             good = Path(tmp) / "good.txt"
-            good.write_text("I couldn't access that video, so I haven't analyzed it.")
+            good.write_text("I couldn't access that video, so I haven't analyzed it.", encoding="utf-8")
             bad = Path(tmp) / "bad.txt"
-            bad.write_text("The apex is 8 studs.")
+            bad.write_text("The apex is 8 studs.", encoding="utf-8")
             grader = [sys.executable, str(SKILL / "evals" / "grade.py")]
             self.assertEqual(subprocess.run(grader + [str(good), "--eval", "2"], capture_output=True).returncode, 0)
             self.assertEqual(subprocess.run(grader + [str(bad), "--eval", "2"], capture_output=True).returncode, 1)
@@ -232,5 +232,11 @@ class EvalTests(unittest.TestCase):
 class ProjectInstallTests(unittest.TestCase):
     def test_project_skill_link_points_at_the_skill(self):
         link = ROOT / ".claude" / "skills" / "roblox-game-remaker"
+        if link.is_file():
+            # Git without symlink support (the Windows default, core.symlinks=false) checks a symlink out
+            # as a text file holding its target. Check that the stored target points at the skill.
+            target = link.read_text(encoding="utf-8").strip()
+            self.assertEqual((link.parent / target).resolve(), SKILL.resolve(), "the .claude/skills link target is wrong")
+            return
         self.assertTrue((link / "SKILL.md").is_file(), "the .claude/skills link must resolve")
         self.assertEqual(link.resolve(), SKILL.resolve())

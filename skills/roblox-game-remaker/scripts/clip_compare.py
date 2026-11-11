@@ -116,7 +116,7 @@ def load_clip(path: Path, side: str, args) -> Clip:
     # Anything else is treated as a harness log.
     import measure_compare
 
-    samples, events, _ = measure_compare.parse_log(path, measure_compare.TAG)
+    samples, events, _ = measure_compare.parse_log(path, measure_compare.TAG, subject=getattr(args, "subject", None))
     if len(samples) < 5:
         rc.fail(f"{side}: {path} has fewer than 5 REMAKE_MEASURE samples")
     p = np.array([s["p"] for s in samples], float)
@@ -425,6 +425,7 @@ def main() -> int:
     ap.add_argument("--scale-search", action="store_true", help="track manifests with scale search")
     ap.add_argument("--out", type=Path, help="write the JSON report here")
     ap.add_argument("--plot", type=Path, help="write the position-versus-time PNG here")
+    ap.add_argument("--subject", help="harness logs from MeasurementHarness.simRecorder: the id to compare (for example p1)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
