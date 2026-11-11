@@ -217,3 +217,19 @@ Open the plot: a constant `bias` points at scale (speed, height), a growing erro
 gravity). Done when `clip_compare` exits 0 at the agreed tier and the result is logged in
 `diff-log.md`.
 
+## 15. Identify a UI tween, camera ease or acceleration ramp
+
+```bash
+python scripts/extract_frames.py clip.mp4 --out remake/frames/menu-open --mode range --start <a> --end <b>
+python scripts/motion_track.py remake/frames/menu-open/manifest.json --bbox <panel edge> --out remake/tracks/menu-open.json
+python scripts/fit_curve.py --track remake/tracks/menu-open.json --field x_px --plot remake/ui/menu-open-fit.png --luau --out remake/ui/menu-open-fit.json
+python scripts/ledger.py import remake remake/ui/menu-open-fit.json --evidence EV-00N
+```
+
+Use `--field scale` (with `motion_track --scale-search`) for pop-ins, `y_px` for slides, and the
+camera's screen-space track for follow lag. Trim to one transition with `--window`. Read the
+warnings: "NOT DISTINGUISHABLE" means the footage cannot tell the listed curves apart, so record
+them all in the breakdown entry's notes, pick by intent, and do not call the choice `MEASURED`
+beyond its duration. Done when the chosen curve's `TweenInfo` or `Spring` values sit in Config or
+the UI module with the `MS` ID.
+

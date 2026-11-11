@@ -105,9 +105,18 @@ original does elsewhere.
 
 - For each state change, record the duration in frames and the property curves (position,
   scale, transparency, rotation) from the extracted frames.
-- Fit the curve: when it matches a `TweenService` `EasingStyle`/`EasingDirection`, use
-  `TweenInfo.new(duration, style, direction)`. Otherwise use `Easing.cubicBezier` from the template
-  with a `RenderStepped` driver.
+- Fit the curve instead of judging it by eye: track the element (`motion_track.py` on its edge,
+  or `--field scale` for a pop-in), then
+  `python scripts/fit_curve.py --track remake/tracks/menu-open.json --field x_px --luau`. It ranks
+  every template `Easing` curve, a spring and an exponential approach, gives the duration with an
+  uncertainty, and says when the top fits cannot be told apart at the footage's frame rate (record
+  the alternatives then, and pick by intent).
+- When the best fit is an `EasingStyle`/`EasingDirection`, use
+  `TweenInfo.new(duration, style, direction)`. The fitter uses the template's textbook formulas;
+  where exact `TweenService` equivalence matters, compare a few values with
+  `TweenService:GetValue()` in Studio. When no curve fits (rms residual above about 5% of the
+  change), the motion may be keyframed or several tweens: fit narrower windows, or use
+  `Easing.cubicBezier` with a `RenderStepped` driver.
 - Stagger: measure the per-item delay in list animations.
 - Sounds: align UI sounds to the first frame of the visual change (`audio_onsets.py`).
 

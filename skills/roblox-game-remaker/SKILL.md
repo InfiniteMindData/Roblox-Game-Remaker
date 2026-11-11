@@ -175,6 +175,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `motion_track.py frames/manifest.json --bbox x,y,w,h --px-per-unit 31.5 --analyze jump` | Track a feature (`--scale-search` when it nears or recedes); fit jump apex, gravity and speed |
 | `camera_solve.py vanishing\|size\|ground` | FOV, pitch, roll and height from marked lines or a known object; ground-plane homography that turns third-person tracks into studs |
 | `remake_calc.py jump --apex 7.2 --rise-time 0.38` | Unit, FOV, jump, acceleration, spring and frame-time conversions, with `--luau` output |
+| `fit_curve.py --track track.json --field x_px --luau` | Rank every template easing curve, a spring and an exponential approach against tracked samples; duration or spring parameters; says when fits are indistinguishable |
 | `visual_compare.py pair ref.png rec.png --out diff/` | SSIM, ΔE2000, Lab shifts, edge IoU, heatmap, grading hints |
 | `palette_extract.py frame.png --region x,y,w,h` | Dominant colors as hex and `Color3.fromRGB` |
 | `ui_measure.py boxes.json --luau` | Pixel boxes to UDim2 scale, AnchorPoint and aspect ratio |

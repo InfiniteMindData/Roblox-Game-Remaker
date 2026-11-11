@@ -14,6 +14,11 @@ Measurement beyond side-on 2D footage.
   clip on the first motion or a given frame, resamples both, and reports position rms and maximum
   error, bias, the frame-quantization floor and event offsets, with a position-versus-time plot.
   `targets.json` gains a `clips` block, written from the tier by `ledger.py targets`.
+- `fit_curve.py`: fits all 31 curves of the template's `Easing.luau`, a critically or
+  under-damped spring (as `Spring.luau` steps it) and an exponential approach to tracked samples,
+  ranks them, gives duration or spring parameters with bootstrap uncertainties and `--luau`
+  output, and says when the top fits cannot be distinguished at the footage's frame rate (with the
+  frame rate that would separate them).
 - `remake_common.line_plot`: Pillow line charts shared by the new tools.
 - `ledger.py import`: imports any tool's `measurements` block (the new tools all write one);
   camera and other Config inputs never become harness targets.

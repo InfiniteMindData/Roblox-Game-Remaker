@@ -96,12 +96,16 @@ the user to record a test.
 - Rest framing: the character's screen position (fraction of width and height) and height in
   pixels, giving distance and offset.
 - Pitch and yaw limits, zoom levels, and zoom speed.
-- Lag: from a sudden start or stop, the screen-space error curve, giving overshoot and settle time:
+- Lag: from a sudden start or stop, track the character's screen position (or a background
+  feature) until it settles, and fit the whole curve rather than reading overshoot by eye:
 
 ```bash
-python scripts/remake_calc.py spring --overshoot 0 --settle-time 0.35
-# critically damped: damping ratio 1, angular frequency 16.6657 rad/s (2.6524 Hz)
+python scripts/fit_curve.py --track remake/tracks/cam-stop.json --field x_px --window 0.9,2.0 --luau --plot remake/sheets/cam-stop-fit.png
+# rank 1 Spring: omega, zeta -> Config.Camera FollowFrequency / FollowDamping (with uncertainties)
 ```
+
+  If only the overshoot and settle time are known (no track), `remake_calc.py spring --overshoot 0
+  --settle-time 0.35` converts them instead.
 
 - Collision behavior: does the camera snap in and ease out? Measure both speeds.
 - Look-ahead, dead zones, and auto-recenter delay and speed.

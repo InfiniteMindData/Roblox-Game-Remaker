@@ -168,9 +168,8 @@ tracked speed suggests foot sliding in the original, or a measurement error.
 - Record element boxes in pixels in a JSON file and convert them with `ui_measure.py` (see
   `ui-recreation.md`).
 - Sample colors with `palette_extract.py --region`. Sample flat areas, not anti-aliased edges.
-- Time UI tweens by frame range. Estimate easing from the per-frame progress of position or
-  alpha: track the element and look at the progress curve shape (linear, quad-out, back-out,
-  and so on).
+- Time UI tweens by frame range. Identify the easing from the per-frame progress of position,
+  scale or alpha with `fit_curve.py` (track the element first); do not name a curve by eye.
 
 ## 8. Colors and lighting reference
 
