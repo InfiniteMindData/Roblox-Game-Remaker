@@ -145,6 +145,7 @@ unverified items, the asset provenance manifest, and next steps.
 | Converting engine conventions and units to Roblox, fidelity limits | [roblox-translation](references/roblox-translation.md) |
 | Project layout, Luau patterns, client/server, config, testing | [luau-architecture](references/luau-architecture.md) |
 | Acceleration, jumps, coyote time, camera follow, shake, hit-stop | [movement-camera-feel](references/movement-camera-feel.md) |
+| Enemy behavior, spawn timers, drop rates, cooldowns, economy and progression from footage | [systems-analysis](references/systems-analysis.md) |
 | Lighting, color grading, materials, sky, fog, post effects | [graphics-lighting](references/graphics-lighting.md) |
 | HUD and menu layout, fonts, safe areas, UI animation timing | [ui-recreation](references/ui-recreation.md) |
 | Modeling, rigging, skinning, animation export from Blender | [blender-pipeline](references/blender-pipeline.md) |
@@ -183,6 +184,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `visual_compare.py pair ref.png rec.png --out diff/` | SSIM, ΔE2000, Lab shifts, edge IoU, heatmap, grading hints |
 | `palette_extract.py frame.png --region x,y,w,h` | Dominant colors as hex and `Color3.fromRGB` |
 | `ui_measure.py boxes.json --luau` | Pixel boxes to UDim2 scale, AnchorPoint and aspect ratio |
+| `event_stats.py events.csv --fps 60 --intervals spawn --rate drop/kill` | Event tables: intervals with spread, binomial rate intervals (never a bare %), state machines, progression curves |
 | `audio_onsets.py clip.mp4` | Sound onset times mapped to video frames |
 | `breakdown_check.py remake --strict` | Validate breakdown coverage, evidence links and statuses |
 | `measure_compare.py output.log --targets remake/targets.json` | Compare in-game measurements with reference targets |

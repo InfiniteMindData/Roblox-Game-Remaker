@@ -32,6 +32,11 @@ Measurement beyond side-on 2D footage.
   (with `--diff-log`) the `diff-log.md` entry, and exits 1 on a regression. `remake_status.py`
   shows the latest scorecard and holds Phase 6 while a regression stands; Phases 6 and 7 use it.
   `clip_compare --clip ID` names a comparison so it can be followed across iterations.
+- `references/systems-analysis.md` and `event_stats.py`: logging enemy behavior, spawns, drops,
+  cooldowns, economy and progression into event tables; intervals with a Student-t interval and
+  frame quantization (fixed versus variable, cooldown upper bounds), rates as exact
+  Clopper-Pearson and Wilson intervals with the trials needed to narrow them (3 of 20 is
+  0.032–0.379, never "15%"), state transitions and dwell times, and progression curve fits.
 - `remake_common.line_plot`: Pillow line charts shared by the new tools.
 - `ledger.py import`: imports any tool's `measurements` block (the new tools all write one);
   camera and other Config inputs never become harness targets.

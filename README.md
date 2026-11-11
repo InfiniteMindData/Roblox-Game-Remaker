@@ -40,6 +40,7 @@ research → measure → document → translate → build → compare → fix
 | `visual_compare.py` | SSIM, CIEDE2000, Lab shifts, edge IoU, heatmaps, lighting hints, batch shot lists |
 | `palette_extract.py` | Dominant colors as `Color3.fromRGB` |
 | `ui_measure.py` | Pixel boxes to `AnchorPoint`/`UDim2`, Luau layout output, layout diffing |
+| `event_stats.py` | Event tables from footage: intervals with spread, exact binomial rate intervals, state machines, progression curves |
 | `audio_onsets.py` | Sound onsets mapped to video frames |
 | `breakdown_init.py` / `breakdown_check.py` | Create and validate the evidence-backed breakdown |
 | `measure_compare.py` | Compare in-game motion logs with reference targets |

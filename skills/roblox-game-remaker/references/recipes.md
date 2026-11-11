@@ -249,3 +249,19 @@ python scripts/fidelity_report.py remake --diff-log --label "it8: FallGravityMul
 change before the next one. Done when the scorecard shows every judged system passing (or the
 user has accepted the listed gaps) and the last iteration has no regression.
 
+## 17. Measure a spawn timer, a drop rate or an enemy's behavior
+
+Read `systems-analysis.md` first. Log every event in the range into `remake/systems/<name>.csv`
+(`frame,event,entity,...`), then:
+
+```bash
+python scripts/event_stats.py remake/systems/wave1.csv --fps 60 --intervals spawn --by entity --out remake/systems/wave1.json
+python scripts/event_stats.py remake/systems/loot.csv --fps 60 --rate drop/kill --plan-halfwidth 0.05 --out remake/systems/loot.json
+python scripts/event_stats.py remake/systems/boss.csv --fps 60 --states idle,windup,attack,recover --by entity --out remake/systems/boss.json
+python scripts/ledger.py import remake remake/systems/loot.json --evidence EV-00N
+```
+
+Write rates as intervals in the breakdown and tell the user how many more trials would narrow
+them (`trials_needed`). Done when every `AI`/`SYS` timer, rate and state in the slice cites an
+`MS` ID, and each wide interval is either narrowed with more footage or flagged `ASSUMED`.
+

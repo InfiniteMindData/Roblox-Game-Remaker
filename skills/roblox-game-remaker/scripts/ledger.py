@@ -156,8 +156,9 @@ def cmd_import(args) -> int:
         entry = {"what": m["what"], "metric": m["metric"], "evidence": [args.evidence],
                  "method": f"{data.get('tool', 'tool')} {args.track.name}: {m['method']}",
                  "value": m["value"], "uncertainty": m["uncertainty"], "unit": m["unit"]}
-        if m.get("frames"):
-            entry["frames"] = m["frames"]
+        for extra in ("frames", "successes", "trials", "interval", "n"):  # keep a rate's k of n and interval
+            if m.get(extra) is not None:
+                entry[extra] = m[extra]
         mid = add_measurement(args.remake, entry)
         imported += 1
         print(f"{mid}  {m['metric']:<15} {m['value']} ± {m['uncertainty']} {m['unit']}")
