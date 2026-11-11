@@ -302,3 +302,109 @@ def rgb_to_hex(rgb: Iterable[float]) -> str:
 
 def env_flag(name: str) -> bool:
     return os.environ.get(name, "").lower() in ("1", "true", "yes")
+
+
+# ---------------------------------------------------------------- plots
+
+PLOT_COLORS = [(31, 119, 180), (230, 120, 20), (44, 160, 44), (200, 40, 40), (120, 80, 170), (90, 90, 90)]
+
+
+def nice_ticks(lo: float, hi: float, n: int = 5) -> list[float]:
+    """About n round-numbered ticks covering [lo, hi]."""
+    import math
+
+    if not math.isfinite(lo) or not math.isfinite(hi):
+        return []
+    if hi <= lo:
+        hi = lo + 1.0
+    raw = (hi - lo) / max(1, n)
+    mag = 10 ** math.floor(math.log10(raw))
+    step = next(m * mag for m in (1, 2, 2.5, 5, 10) if m * mag >= raw)
+    start = math.ceil(lo / step - 1e-9) * step
+    ticks, v = [], start
+    while v <= hi + 1e-9 * step:
+        ticks.append(round(v, 10))
+        v += step
+    return ticks
+
+
+def line_plot(path: Path, panels: list[dict], title: str = "", width: int = 960, panel_height: int = 260) -> Path:
+    """Draw stacked line-chart panels with Pillow and save a PNG.
+
+    Each panel: {"title": str, "ylabel": str, "xlabel": str,
+                 "series": [{"label": str, "x": [...], "y": [...], "color": (r, g, b), "dots": bool}],
+                 "vlines": [{"x": float, "label": str}]}
+    """
+    import math
+
+    Image = require_pil()
+    from PIL import ImageDraw, ImageFont
+
+    font = ImageFont.load_default()
+    top = 28 if title else 8
+    img = Image.new("RGB", (width, top + panel_height * len(panels)), (255, 255, 255))
+    d = ImageDraw.Draw(img)
+    if title:
+        d.text((10, 8), title, fill=(0, 0, 0), font=font)
+    left, right, pad_t, pad_b = 70, 20, 22, 40
+    for pi, panel in enumerate(panels):
+        y0 = top + pi * panel_height
+        px0, px1 = left, width - right
+        py0, py1 = y0 + pad_t, y0 + panel_height - pad_b
+        xs = [x for s in panel["series"] for x in s["x"] if x is not None and math.isfinite(x)]
+        ys = [y for s in panel["series"] for y in s["y"] if y is not None and math.isfinite(y)]
+        if not xs or not ys:
+            d.text((px0, py0), f"{panel.get('title', '')}: no data", fill=(120, 0, 0), font=font)
+            continue
+        xlo, xhi = min(xs), max(xs)
+        ylo, yhi = min(ys), max(ys)
+        if yhi - ylo < 1e-12:
+            ylo, yhi = ylo - 1, yhi + 1
+        margin = 0.05 * (yhi - ylo)
+        ylo, yhi = ylo - margin, yhi + margin
+        if xhi - xlo < 1e-12:
+            xhi = xlo + 1
+
+        def sx(x):
+            return px0 + (x - xlo) / (xhi - xlo) * (px1 - px0)
+
+        def sy(y):
+            return py1 - (y - ylo) / (yhi - ylo) * (py1 - py0)
+
+        d.rectangle([px0, py0, px1, py1], outline=(0, 0, 0))
+        for t in nice_ticks(xlo, xhi, 8):
+            x = sx(t)
+            d.line([x, py0, x, py1], fill=(232, 232, 232))
+            d.text((x - 12, py1 + 4), f"{t:g}", fill=(60, 60, 60), font=font)
+        for t in nice_ticks(ylo, yhi, 5):
+            y = sy(t)
+            d.line([px0, y, px1, y], fill=(232, 232, 232))
+            d.text((4, y - 6), f"{t:g}", fill=(60, 60, 60), font=font)
+        d.rectangle([px0, py0, px1, py1], outline=(0, 0, 0))
+        for vi, v in enumerate(panel.get("vlines", [])):
+            if xlo <= v["x"] <= xhi:
+                x = sx(v["x"])
+                d.line([x, py0, x, py1], fill=(150, 150, 150))
+                d.text((x + 2, py0 + 24 + 12 * (vi % 4)), v.get("label", ""), fill=(100, 100, 100), font=font)
+        lx = px0 + 8
+        for si, s in enumerate(panel["series"]):
+            color = tuple(s.get("color") or PLOT_COLORS[si % len(PLOT_COLORS)])
+            pts = [(sx(x), sy(y)) for x, y in zip(s["x"], s["y"])
+                   if x is not None and y is not None and math.isfinite(x) and math.isfinite(y)]
+            if len(pts) > 1 and not s.get("dots"):
+                d.line(pts, fill=color, width=2)
+            if s.get("dots") or len(pts) == 1:
+                for x, y in pts:
+                    d.ellipse([x - 2, y - 2, x + 2, y + 2], fill=color)
+            label = s.get("label", "")
+            d.line([lx, py0 + 14, lx + 18, py0 + 14], fill=color, width=3)
+            d.text((lx + 22, py0 + 8), label, fill=(0, 0, 0), font=font)
+            lx += 30 + 7 * len(label)
+        d.text((px0, y0 + 4), panel.get("title", ""), fill=(0, 0, 0), font=font)
+        if panel.get("xlabel"):
+            d.text((px1 - 7 * len(panel["xlabel"]), py1 + 18), panel["xlabel"], fill=(60, 60, 60), font=font)
+        if panel.get("ylabel"):
+            d.text((px0 + 4, py1 - 14), panel["ylabel"], fill=(60, 60, 60), font=font)
+    ensure_parent(path)
+    img.save(path)
+    return path

@@ -257,6 +257,13 @@ def cmd_targets(args) -> int:
         spec["tolerance"] = round(tol, 5)
         metrics[metric] = spec
         written.append(f"{metric} = {value} ± {spec['tolerance']} ({mid})")
+    clips = data.setdefault("clips", {})
+    if "default" not in clips or args.replace:
+        # clip_compare tolerances: position error as a share of the reference's travel, events in frames.
+        clips["default"] = {"position_rms_pct": tier["pct"], "position_max_pct": 2 * tier["pct"]}
+        if tier["frames"]:
+            clips["default"]["event_offset_frames"] = tier["frames"]
+        written.append(f"clips.default = {clips['default']} (clip_compare)")
     save(path, data)
     for w in written:
         print(w)

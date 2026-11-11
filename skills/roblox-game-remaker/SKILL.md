@@ -122,7 +122,8 @@ module, and run `scripts/config_check.py remake` after every Config change.
 
 **Phase 6: Verify and fix (loop).** Follow [references/verification-loop.md](references/verification-loop.md).
 Capture matched shots and compare them with `scripts/visual_compare.py`. Log motion with the
-in-game measurement harness and compare it with `scripts/measure_compare.py`. Fix the largest
+in-game measurement harness and compare it with `scripts/measure_compare.py`; compare whole
+motions over time with `scripts/clip_compare.py`. Fix the largest
 measured gap first, re-measure, and record each iteration in `remake/diff-log.md`.
 
 **Phase 7: Deliver.** Fill `remake/delivery-report.md`: what matches (with numbers), remaining
@@ -180,6 +181,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `audio_onsets.py clip.mp4` | Sound onset times mapped to video frames |
 | `breakdown_check.py remake --strict` | Validate breakdown coverage, evidence links and statuses |
 | `measure_compare.py output.log --targets remake/targets.json` | Compare in-game measurements with reference targets |
+| `clip_compare.py ref-track.json rec.log --targets remake/targets.json --plot clip.png` | Align a build recording (track or harness log) with the reference clip; position error over time, event offsets, overlay plot |
 | `blender_roblox_export.py` | Run inside Blender: check Roblox mesh and rig limits, then export FBX or glTF |
 
 Rehearse the pipeline, or check an install, with synthetic footage that has known answers:

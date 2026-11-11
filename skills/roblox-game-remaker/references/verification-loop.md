@@ -8,6 +8,7 @@ claim of "matches the original" points to a comparison artifact.
 | Aspect | Reference | Recreation | Tool | Metric |
 |---|---|---|---|---|
 | Movement, jumps, camera motion | `measurements.json` targets | Harness log | `measure_compare.py` | abs/% error vs tolerance |
+| Motion over time (a whole run, jump or dash) | Reference track (`motion_track`, `camera_solve ground`) | Harness log, or a track of a build recording | `clip_compare.py` | Aligned position rms/max, event offsets |
 | Shot look (environment, lighting) | Matched reference frame | `ShotCamera` capture | `visual_compare.py pair` | SSIM, ΔE2000, Lab shift, edge IoU |
 | UI layout | Reference screenshot boxes | Capture boxes | `ui_measure.py --compare`, `visual_compare.py --grid` | % of screen error per element |
 | Animation | Keypose frames | Frozen-pose captures | `contact_sheet.py` side by side, `visual_compare.py --edges-only` | Frame error, silhouette IoU |
@@ -66,6 +67,30 @@ claim of "matches the original" points to a comparison artifact.
 - For alignment work, `overlay.py` gives single images that are quicker to read: `blend` (ghosting
   shows offsets), `checker` (edges that break across tiles are misaligned), `wipe` (a split line),
   and `diff` (amplified difference).
+
+## 3a. Comparing clips over time (`clip_compare.py`)
+
+`measure_compare` checks summary numbers (apex, t90). Two motions can share those and still
+differ in between, so compare whole clips too:
+
+```bash
+python scripts/clip_compare.py remake/tracks/jump01.json remake/logs/run-04.log --targets remake/targets.json \
+  --out remake/diff/jump01-it4/clip.json --plot remake/diff/jump01-it4/clip.png
+```
+
+- Inputs: a `motion_track` or `camera_solve ground` track, a harness log, or a frame manifest
+  with `--ref-bbox`/`--rec-bbox`. Both sides must be in the same unit.
+- Each clip is reduced to `along` (distance along its own net direction, so camera orientation
+  and world axes do not matter) and `up`. Axes on which neither clip moves are dropped.
+- Alignment: `first-motion` (default; the start of movement, back-extrapolated to zero
+  displacement) or `--align frames --ref-frame N --rec-frame M` for an event you can see, such as
+  the frame the jump button lights up.
+- Read `position_rms`/`position_max` against `floor`: errors below the frame-quantization floor
+  are as small as the footage can show. `bias` says which way the recreation is off; the event
+  offsets (`speed_90`, `apex`, `landing`, `stop`) say when.
+- Tolerances: `targets.json` → `clips.default` (written by `ledger.py targets` from the tier as a
+  percent of the reference's travel and a number of frames), overridden per clip with `--clip ID`.
+  The command exits 1 when one is exceeded.
 
 ## 4. Iteration discipline (`remake/diff-log.md`)
 

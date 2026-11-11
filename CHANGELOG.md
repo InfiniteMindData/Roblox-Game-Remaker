@@ -10,6 +10,11 @@ Measurement beyond side-on 2D footage.
 - `motion_track.py --scale-search`: follows subjects that move toward or away from the camera,
   and warns when one `--px-per-unit` cannot describe the clip. A lost match is no longer
   extrapolated off-screen (it used to crash with "search window is smaller than the template").
+- `clip_compare.py`: aligns a recording of the build (a track or a harness log) with the reference
+  clip on the first motion or a given frame, resamples both, and reports position rms and maximum
+  error, bias, the frame-quantization floor and event offsets, with a position-versus-time plot.
+  `targets.json` gains a `clips` block, written from the tier by `ledger.py targets`.
+- `remake_common.line_plot`: Pillow line charts shared by the new tools.
 - `ledger.py import`: imports any tool's `measurements` block (the new tools all write one);
   camera and other Config inputs never become harness targets.
 - Demo footage: `demo_perspective.mkv`, a rendered third-person clip with known camera and speed;

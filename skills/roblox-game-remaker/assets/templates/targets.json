@@ -6,5 +6,8 @@
     "jump_apex": {"target": null, "tolerance": 0.3, "unit": "studs", "source": "MS-???"},
     "jump_rise_time": {"target": null, "tolerance": 0.017, "unit": "s", "source": "MS-???"},
     "jump_fall_time": {"target": null, "tolerance": 0.017, "unit": "s", "source": "MS-???"}
+  },
+  "clips": {
+    "default": {"position_rms_pct": 7, "position_max_pct": 14, "event_offset_frames": 2}
   }
 }

@@ -42,6 +42,7 @@ research → measure → document → translate → build → compare → fix
 | `audio_onsets.py` | Sound onsets mapped to video frames |
 | `breakdown_init.py` / `breakdown_check.py` | Create and validate the evidence-backed breakdown |
 | `measure_compare.py` | Compare in-game motion logs with reference targets |
+| `clip_compare.py` | Compare a build recording or harness log with the reference clip over time: aligned position error, event offsets, overlay plot |
 | `blender_roblox_export.py` | Check Roblox mesh and rig limits in Blender, then export |
 | `doctor.py` | Report which tools are available |
 | `remake_status.py` | Phase gates, open items, next action; writes `STATUS.md` |

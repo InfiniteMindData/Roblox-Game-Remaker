@@ -194,3 +194,26 @@ the solved camera reproduces the reference shot within its stated uncertainty
 (`visual_compare.py` edge IoU), and `ground_speed` imports with no warnings. When `camera_solve`
 withholds measurements, fix the track first (`footage-analysis.md` §5a).
 
+## 14. Compare a recording of the build with the reference clip
+
+After a jump or run passes `measure_compare`, check the whole motion over time.
+
+```bash
+python scripts/clip_compare.py remake/tracks/jump01.json remake/logs/run-05.log --targets remake/targets.json \
+  --out remake/diff/jump01-it5/clip.json --plot remake/diff/jump01-it5/clip.png
+```
+
+The harness log is in studs, so the reference track needs `--px-per-unit` (or a `camera_solve
+ground` conversion). To compare two videos instead (a screen recording of the build against the
+reference), extract both and pass the manifests:
+
+```bash
+python scripts/clip_compare.py remake/frames/jump01/manifest.json remake/frames/build-jump/manifest.json \
+  --ref-bbox <x,y,w,h> --rec-bbox <x,y,w,h> --ref-px-per-unit <ref px/stud> --rec-px-per-unit <build px/stud> \
+  --align frames --ref-frame <takeoff frame> --rec-frame <takeoff frame> --plot remake/diff/jump01-video.png
+```
+
+Open the plot: a constant `bias` points at scale (speed, height), a growing error at timing (ramp,
+gravity). Done when `clip_compare` exits 0 at the agreed tier and the result is logged in
+`diff-log.md`.
+
