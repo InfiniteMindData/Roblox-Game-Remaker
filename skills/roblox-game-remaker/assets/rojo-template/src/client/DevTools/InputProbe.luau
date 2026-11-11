@@ -36,7 +36,7 @@ function InputProbe.start(config: { [string]: any }): () -> ()
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 1000
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(0, 520, 0, 220)
+	label.Size = UDim2.fromOffset(520, 220)
 	label.Position = UDim2.new(0, 20, 0.5, -110)
 	label.BackgroundTransparency = 0.3
 	label.BackgroundColor3 = Color3.new(0, 0, 0)

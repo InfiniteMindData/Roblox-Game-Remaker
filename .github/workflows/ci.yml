@@ -25,6 +25,7 @@ jobs:
       - name: Install Python dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Agent Skills reference validator
+        if: matrix.python != '3.10'  # skills-ref needs Python 3.11+; the scripts themselves support 3.10
         run: agentskills validate skills/roblox-game-remaker
       - name: Repository validator
         run: python tools/validate_skill.py skills/roblox-game-remaker --strict --run-help
