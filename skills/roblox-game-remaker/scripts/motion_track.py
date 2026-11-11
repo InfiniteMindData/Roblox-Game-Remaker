@@ -17,6 +17,12 @@ image plane at a constant camera distance. Use side-on test clips, or convert th
 tracks to world units with camera_solve.py ground. --scale-search follows a subject whose
 apparent size changes and warns when one --px-per-unit cannot describe the whole clip.
 
+Real footage: frames that repeat the previous position while the subject moves (30 fps content
+in a 60 fps file) are dropped from the analyses and reported as content_fps; samples where the
+anchor was lost, or the subject was lost (low score plus a jump or a stall), are excluded and
+marked; the steady speed is checked half against half so slow drift widens its uncertainty; and
+a track with more than 20% unusable samples is marked reliable: false, which ledger.py refuses.
+
 Examples:
   python motion_track.py frames/jump/manifest.json --bbox 912,604,48,96 --px-per-unit 31.5 --unit studs --analyze jump --out tracks/jump.json
   python motion_track.py frames/run/manifest.json --bbox 300,500,40,80 --anchor-bbox 50,900,64,64 --analyze speed --out tracks/run.json
@@ -178,13 +184,9 @@ def analyze_jump(t, v, unit: str, px_unit: float, fps: float, air_range=None) ->
     if i1 - i0 + 1 < 5:
         rc.fail("airborne segment has fewer than 5 samples; extract every frame of the jump", rc.EXIT_FAIL)
     ts, vs = t[i0:i1 + 1] - t[i0], v[i0:i1 + 1]
-    # Include one grounded sample on each side so takeoff and landing are bracketed.
-    if i0 > 0:
-        ts = np.concatenate([[t[i0 - 1] - t[i0]], ts])
-        vs = np.concatenate([[v[i0 - 1]], vs])
-    if i1 + 1 < len(v):
-        ts = np.concatenate([ts, [t[i1 + 1] - t[i0]]])
-        vs = np.concatenate([vs, [v[i1 + 1]]])
+    # Fit airborne samples only. A grounded sample just before takeoff or after landing is not on the
+    # flight parabola unless takeoff falls exactly on a frame; including it biased the rise and fall
+    # gravities whenever it did not (variable frame rate, dropped frames, 30 fps content).
     (a, b, c), cov = np.polyfit(ts, vs, 2, cov=True)
     if a >= 0:
         rc.fail("airborne segment is not concave (no deceleration); the tracked feature may be wrong", rc.EXIT_FAIL)
@@ -317,12 +319,33 @@ def analyze_speed(t, u, unit: str, px_unit: float, fps: float) -> dict:
     V = float(V)
     if V <= 0:
         rc.fail("could not fit a positive steady speed", rc.EXIT_FAIL)
+    # Split-half check: a tracker or anchor that drifts slowly bends the tail without adding scatter,
+    # so the fit's own std understates the error. Fit each half of the tail and widen the
+    # uncertainty to cover their disagreement.
+    split = None
+    if tail >= 8:
+        h = tail // 2
+        v1 = float(np.polyfit(t[-tail:-tail + h], s[-tail:-tail + h], 1)[0])
+        v2 = float(np.polyfit(t[-h:], s[-h:], 1)[0])
+        split = [round(v1, 4), round(v2, 4)]
+        if abs(v1 - v2) / 2 > v_std:
+            notes.append(f"the two halves of the steady segment disagree ({v1:.3f} vs {v2:.3f}): the track drifts or the "
+                         "speed is not steady; the uncertainty covers the difference")
+            v_std = abs(v1 - v2) / 2
     dt = 1.0 / (fps or 60.0)
     lin_ts, lin_T, lin_rms = _fit_onset_model(t, s, V, "linear", dt, float(t[k]))
     exp_ts, exp_tau, exp_rms = _fit_onset_model(t, s, V, "exponential", dt, float(t[k]))
     preferred = "linear_ramp" if lin_rms <= exp_rms else "exponential"
     t_start = lin_ts if preferred == "linear_ramp" else exp_ts
     t90_model = 0.9 * lin_T if preferred == "linear_ramp" else exp_tau * math.log(10)
+    # The ramp fit depends on the steady speed: carry its uncertainty into t90.
+    t90_unc = dt
+    if v_std > 0.002 * V:
+        kind = "linear" if preferred == "linear_ramp" else "exponential"
+        for vv in (V - v_std, V + v_std):
+            _, p_alt, _ = _fit_onset_model(t, s, vv, kind, dt, float(t[k]))
+            alt = 0.9 * p_alt if kind == "linear" else p_alt * math.log(10)
+            t90_unc = max(t90_unc, abs(alt - t90_model))
     vel = np.gradient(s, t)
     if len(vel) >= 3:
         vel = np.convolve(vel, np.ones(3) / 3, mode="same")
@@ -334,7 +357,9 @@ def analyze_speed(t, u, unit: str, px_unit: float, fps: float) -> dict:
         "motion_start_s": round(t_start, 4),
         "steady_speed": round(V, 4),
         "steady_speed_std": round(v_std, 5),
+        "steady_speed_halves": split,
         "t90_s": round(t90_model, 4),
+        "t90_uncertainty_s": round(t90_unc, 5),
         "t90_from_samples_s": round(t90_samples, 4) if t90_samples is not None else None,
         "linear_ramp": {"start_s": round(lin_ts, 4), "time_to_full_s": round(lin_T, 4),
                         "acceleration": round(V / lin_T, 4), "rms": round(lin_rms, 5)},
@@ -343,6 +368,75 @@ def analyze_speed(t, u, unit: str, px_unit: float, fps: float) -> dict:
         "time_precision_s": round(dt, 5),
         "notes": notes,
     }
+
+
+def repeated_frames(xs, ys, fps: float):
+    """Detect content that updates slower than the container (30 fps game in a 60 fps file).
+
+    While the subject moves (mean step over 4 frames > 0.5 px), a frame whose tracked position
+    equals the previous one (< 0.15 px) repeats stale content. Returns (keep mask, effective
+    content fps or None, repeat ratio while moving). Only acts when more than 25% of moving
+    frames repeat, so a slow apex or integer-pixel staircase in clean footage is left alone.
+    """
+    np = rc.require_numpy()
+    xs, ys = np.asarray(xs, float), np.asarray(ys, float)
+    d = np.r_[np.inf, np.hypot(np.diff(xs), np.diff(ys))]
+    dd = np.where(np.isfinite(d), d, 0.0)
+    mean4 = np.convolve(dd, np.ones(4) / 4, mode="same")
+    moving = mean4 > 0.5
+    moving[0] = False
+    if moving.sum() < 6:
+        return np.ones(len(xs), bool), None, 0.0
+    rep = (d < 0.15) & moving
+    ratio = float(rep[moving].mean())
+    if ratio <= 0.25:
+        return np.ones(len(xs), bool), None, ratio
+    return ~rep, fps * (1 - ratio), ratio
+
+
+def unusable_samples(samples, min_score: float, has_anchor: bool):
+    """Samples to leave out of the analyses, with the reason.
+
+    - anchor lost: the static anchor matched below min_score, so camera motion was not cancelled
+    - subject lost: the subject matched below min_score AND its position is inconsistent with the
+      rest of the track (a jump far larger than the typical step, or standing still in the middle
+      of a movement). A low score with smooth motion, as with motion blur, is kept.
+    """
+    np = rc.require_numpy()
+    n = len(samples)
+    x = np.array([s["x_px"] for s in samples], float)
+    y = np.array([s["y_px"] for s in samples], float)
+    if has_anchor:
+        ax = np.array([s["x_px"] - s["x_cam_px"] for s in samples], float)
+        ay = np.array([s["y_px"] - s["y_cam_px"] for s in samples], float)
+        x, y = ax, ay
+    steps = np.r_[0.0, np.hypot(np.diff(x), np.diff(y))]
+    moving_steps = steps[steps > 0.5]
+    typical = float(np.median(moving_steps)) if len(moving_steps) else 0.0
+    reasons: dict[int, str] = {}
+    for i, s in enumerate(samples):
+        if has_anchor and s.get("anchor_score") is not None and s["anchor_score"] < min_score:
+            reasons[i] = "anchor lost"
+            continue
+        if s["score"] >= min_score or i == 0:
+            continue
+        lo, hi = max(1, i - 3), min(n, i + 4)
+        around = [steps[j] for j in range(lo, hi) if j != i]
+        local = float(np.median(around)) if around else typical
+        if steps[i] > 4 * max(local, typical) + 3:
+            reasons[i] = "subject lost (position jumped)"
+        elif typical > 1.0 and steps[i] < 0.2 and local < 0.2 and (i + 1 >= n or samples[i + 1]["score"] < min_score):
+            reasons[i] = "subject lost (stalled while the motion continued)"
+    # Once the subject is lost, later low-score samples stay lost until a good match returns.
+    lost = False
+    for i, s in enumerate(samples):
+        if reasons.get(i, "").startswith("subject lost"):
+            lost = True
+        elif s["score"] >= min_score:
+            lost = False
+        elif lost:
+            reasons.setdefault(i, "subject lost (after a jump or stall)")
+    return reasons
 
 
 # ----------------------------------------------------------------- cli
@@ -394,11 +488,13 @@ def main() -> int:
         xc, yc = x - dx, y - dy
         u = (xc - x0) * scale
         v = (y0 - yc) * scale
-        low += sc < args.min_score
+        low += sc < args.min_score or bool(anchor and anchor[i][2] < args.min_score)
         samples.append({"sample": i, "index": fr.get("index"), "t": round(times[i], 6),
                         "x_px": round(x, 3), "y_px": round(y, 3), "score": round(sc, 4),
                         "u": round(u, 5), "v": round(v, 5),
                         "anchor_score": round(anchor[i][2], 4) if anchor else None})
+        if anchor:
+            samples[-1]["x_cam_px"], samples[-1]["y_cam_px"] = round(dx, 3), round(dy, 3)
         if args.scale_search:
             samples[-1]["scale"] = round(pt[3], 4)
 
@@ -420,15 +516,48 @@ def main() -> int:
             result["warnings"].append(
                 f"the subject's apparent size changed {100 * (span - 1):.0f}% during the clip, so one --px-per-unit cannot be right "
                 "for every frame (perspective); convert positions with camera_solve.py ground instead")
-    tt = [s["t"] for s in samples]
+    keep, eff_fps, rep_ratio = repeated_frames([s["x_px"] for s in samples], [s["y_px"] for s in samples], fps)
+    used = samples
+    if eff_fps:
+        for s_, k in zip(samples, keep):
+            s_["repeat"] = not bool(k)
+        used = [s_ for s_, k in zip(samples, keep) if k]
+        result["content_fps"] = round(eff_fps, 3)
+        result["repeated_samples"] = int((~keep).sum())
+        result["warnings"].append(
+            f"{100 * rep_ratio:.0f}% of the frames while the subject moves repeat the previous position: the content updates at "
+            f"about {eff_fps:.1f} fps, not {fps:.1f}. Analyses use only the first frame of each repeat, and timings are only "
+            f"precise to ±{1000 / eff_fps:.1f} ms")
+    bad = unusable_samples(samples, args.min_score, bool(anchor))
+    if bad:
+        for i, why in bad.items():
+            samples[i]["excluded"] = why
+        used = [s_ for s_ in used if "excluded" not in s_]
+        kinds = sorted(set(bad.values()))
+        result["excluded_samples"] = len(bad)
+        result["warnings"].append(f"{len(bad)} samples left out of the analysis ({'; '.join(kinds)}); see 'excluded' in samples")
+    excluded_frac = len(bad) / len(samples)
+    result["reliable"] = excluded_frac <= 0.2 and len(used) >= 8
+    if not result["reliable"]:
+        result["warnings"].append(f"UNRELIABLE: {100 * excluded_frac:.0f}% of the samples were unusable; the analysis below is for "
+                                  "inspection only and ledger.py will not import it. Fix the track (smaller or sharper feature, "
+                                  "--scale-search, another anchor, a shorter range)")
+    if len(used) < 3:
+        rc.fail("fewer than 3 usable samples remain; the track lost the subject", rc.EXIT_FAIL)
+    tt = [s["t"] for s in used]
+    rate = eff_fps or fps
     if args.analyze == "jump":
         air = None
         if args.air_range:
             a, b = (int(v) for v in args.air_range.split(","))
+            if len(used) != len(samples):
+                a, b = (sum(1 for s_ in used if s_["sample"] < a), sum(1 for s_ in used if s_["sample"] <= b) - 1)
             air = (a, b)
-        result["jump"] = analyze_jump(tt, [s["v"] for s in samples], unit, scale, fps, air)
+        result["jump"] = analyze_jump(tt, [s["v"] for s in used], unit, scale, rate, air)
+        result["jump"]["segment_samples"] = [used[i]["sample"] for i in result["jump"]["segment_samples"]]
     elif args.analyze == "speed":
-        result["speed"] = analyze_speed(tt, [s["u"] for s in samples], unit, scale, fps)
+        result["speed"] = analyze_speed(tt, [s["u"] for s in used], unit, scale, rate)
+        result["speed"]["first_moving_sample"] = used[result["speed"]["first_moving_sample"]]["sample"]
 
     if args.out:
         rc.write_json(args.out, result)

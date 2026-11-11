@@ -19,6 +19,14 @@ Measurement beyond side-on 2D footage.
   ranks them, gives duration or spring parameters with bootstrap uncertainties and `--luau`
   output, and says when the top fits cannot be distinguished at the footage's frame rate (with the
   frame rate that would separate them).
+- Robustness on real-world footage: `make_demo_footage.py --only degraded` renders heavy H.264,
+  motion blur, 30 fps content in a 60 fps file, variable frame rate and a HUD over the subject,
+  and `tests/test_degraded_footage.py` holds each tool to a bound, a warning with a covering
+  uncertainty, or an error. Fixed along the way: jump fits biased by grounded samples (VFR rise
+  gravity 88.9 for 100), `probe_video` reading still stretches as a low frame rate, timing
+  precision overstated on 30 fps content, the anchor's match score ignored, and `find_mover`
+  offering a HUD panel as the subject. `motion_track` now reports `content_fps`, excluded
+  samples and `reliable`; `ledger.py` refuses unreliable tracks.
 - `remake_common.line_plot`: Pillow line charts shared by the new tools.
 - `ledger.py import`: imports any tool's `measurements` block (the new tools all write one);
   camera and other Config inputs never become harness targets.

@@ -136,6 +136,22 @@ python scripts/ledger.py import remake remake/tracks/run3d-ground.json --evidenc
 - If the source track has low-score samples, `camera_solve` withholds the measurements. Fix the
   track (smaller box, `--scale-search`, a shorter range) instead of importing a wrong number.
 
+**Real-world footage.** Compression, motion blur, low content rates, variable frame rates and
+HUDs all degrade tracking. The tools now report rather than hide this; read the warnings:
+
+| Output | Means | Do |
+|---|---|---|
+| `content_fps` and "repeat the previous position" | 30 fps (or lower) content in a faster container | Nothing: analyses use the first frame of each repeat, and `time_precision_s` is one content frame |
+| "low match scores" with smooth motion | Blur or appearance change; positions are usually still right | Check `fit_rms` and the stds; a smaller, sharper feature helps |
+| `excluded_samples`, `excluded` per sample | Anchor lost, or the subject jumped or stalled with a low score (HUD occlusion, lost track) | Those samples are left out of the fits; check the remaining range covers the event |
+| `reliable: false` / UNRELIABLE | More than 20% of samples unusable | Fix the track; `ledger.py` refuses it, `camera_solve` withholds its numbers |
+| `steady_speed_halves` disagree | Slow drift (compression, a changing anchor) | The uncertainty is widened to cover it; consider another anchor |
+| `scale_range` changes with `--px-per-unit` | Perspective | Use `camera_solve.py ground` (§5a) |
+
+What each case does to accuracy on the synthetic demo is recorded in `docs/VERIFICATION.md` of
+the skill's repository; a heavy H.264 encode (CRF 40 on a noisy background) destroys the
+background, and the tools then stop with an error instead of guessing.
+
 **Cross-check.** Speed = stride length × cadence. If the walk cycle is 30 frames at 60 fps and
 covers 2 strides of 1.4 m, then 2.8 m in 0.5 s = 5.6 m/s (20 studs/s). A large mismatch with the
 tracked speed suggests foot sliding in the original, or a measurement error.

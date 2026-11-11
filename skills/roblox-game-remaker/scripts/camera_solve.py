@@ -537,18 +537,28 @@ def convert_track(args, hm, convert, perturbed, method, unit) -> dict:
         warn.append(f"one pixel covers {upx[-1] / upx[0]:.1f}x more ground at one end of the path than the other (perspective): "
                     "a fixed-size template drifts as the subject shrinks; re-run motion_track with --scale-search")
     low = int(track.get("low_score_samples") or 0)
-    if low:
-        warn.append(f"the source track has {low} low-score samples (the tracker lost or partly lost the subject); "
+    # Current motion_track output marks lost samples and says whether the track is reliable; older
+    # output only counts low scores, so treat any low score there as unreliable.
+    unreliable = track.get("reliable") is False or (low > 0 and "reliable" not in track)
+    if unreliable:
+        warn.append(f"the source track is unreliable ({low} low-score samples; the tracker lost or partly lost the subject); "
                     "measurements are withheld from the ledger until the track is fixed")
+    elif low:
+        warn.append(f"the source track has {low} low-score samples; {track.get('excluded_samples', 0)} lost ones are left out "
+                    "of the fit")
+    use = [i for i, s in enumerate(samples) if "excluded" not in s and not s.get("repeat")]
     if args.contact == "center":
         warn.append("contact = center: correct only when the tracked feature lies on the ground (a shadow or a decal); "
                     "for a standing character use --contact bottom with a box around the whole body")
     if args.analyze == "speed":
-        t = np.array([r["t"] for r in rows])
-        xy = g - g[0]
+        if len(use) < 8:
+            rc.fail("fewer than 8 usable track samples to fit a speed", rc.EXIT_FAIL)
+        t = np.array([rows[i]["t"] for i in use])
+        gu = g[use]
+        xy = gu - gu[0]
         d = xy[-1] / max(1e-12, float(np.linalg.norm(xy[-1])))
         s_along = xy @ d
-        fps = track.get("fps_from_samples") or 60.0
+        fps = track.get("content_fps") or track.get("fps_from_samples") or 60.0
         speed = motion_track.analyze_speed(t, s_along, unit, upx[len(upx) // 2], fps)
         vs = []
         for pair in perturbed:
@@ -557,7 +567,7 @@ def convert_track(args, hm, convert, perturbed, method, unit) -> dict:
                 break
             vv = []
             for hp in pair:
-                gp = apply_h(hp, pts)
+                gp = apply_h(hp, pts)[use]
                 xp = gp - gp[0]
                 vv.append(motion_track.analyze_speed(t, xp @ d, unit, upx[len(upx) // 2], fps)["steady_speed"])
             vs.append((vv[1] - vv[0]) / 2)
@@ -570,10 +580,11 @@ def convert_track(args, hm, convert, perturbed, method, unit) -> dict:
         tot = None if geo is None else math.hypot(geo, 2 * speed.get("steady_speed_std", 0.0))
         m2 = (f"{method}; track {Path(args.track).name} ({args.contact} of bbox) converted to the ground plane; "
               f"standing-start fit (preferred model {speed['preferred_model']})")
-        if not low and geo is not None:
+        if not unreliable and geo is not None:
             res["measurements"] = [
                 measurement("ground_speed", "steady ground speed (ground-plane track)", speed["steady_speed"], tot, f"{unit}/s", m2),
-                measurement("accel_t90", "time to 90% speed (ground-plane track)", speed["t90_s"], speed["time_precision_s"], "s", m2),
+                measurement("accel_t90", "time to 90% speed (ground-plane track)", speed["t90_s"],
+                        max(speed["time_precision_s"], speed.get("t90_uncertainty_s") or 0), "s", m2),
             ]
     res["warnings_track"] = warn
     return {"track": res}

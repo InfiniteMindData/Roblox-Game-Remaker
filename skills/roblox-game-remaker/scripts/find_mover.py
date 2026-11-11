@@ -7,7 +7,9 @@ Method:
   2. Pick the two aligned frames that differ most from the first frame and from each other.
   3. Pixels that differ from BOTH are where a mover sits in the first frame; connected
      regions of them become candidate boxes (in first-frame source pixels).
-  4. When the camera moves, also suggest a textured static patch for --anchor-bbox.
+  4. When the camera moves, also suggest a textured static patch for --anchor-bbox, and leave
+     out screen-fixed overlays (HUD), which camera compensation would otherwise make look like
+     movers; they are listed as screen_fixed_regions.
 
 It finds rigid or roughly rigid movers well (characters, props, UI elements). Always confirm
 the top candidate with frame_zoom.py --mark before tracking.
@@ -124,6 +126,16 @@ def main() -> int:
     mask = (np.nan_to_num(diffs[j]) > thr) & (np.nan_to_num(diffs[k]) > thr)
     covered = np.all([np.isfinite(a) for a in aligned], axis=0)
     mask = dilate(mask, 1) & covered  # ignore borders uncovered by camera motion
+    overlay = np.zeros_like(mask)
+    pan = max(abs(s_[0]) + abs(s_[1]) for s_ in shifts) * d
+    if pan > 2:
+        # Screen-fixed overlays (HUD, watermarks) barely change on screen while the world pans under
+        # them, so camera compensation makes them look like movers. Find and drop them.
+        raw = [np.abs(imgs[i] - ref) for i in (j, k)]
+        typical = max(1.0, float(np.median(raw[0])))
+        overlay = (raw[0] < 0.5 * typical) & (raw[1] < 0.5 * typical) & mask
+        overlay = dilate(overlay, 2)
+        mask &= ~overlay
     cands = components(mask, min_area=max(4, mask.size // 20000))
     if cands:
         cands = [c for c in cands if c[4] >= 0.1 * cands[0][4]][: args.max_candidates]
@@ -144,7 +156,7 @@ def main() -> int:
         trail = np.zeros_like(covered)
         for df in diffs[1:]:
             trail |= np.nan_to_num(df) > thr
-        busy = dilate(trail, 3)
+        busy = dilate(trail, 3) | dilate(overlay, 3)
         for r in results:
             x, y, w, h = (v // d for v in r["bbox"])
             busy[max(0, y - h):y + 2 * h, max(0, x - w):x + 2 * w] = True
@@ -162,11 +174,14 @@ def main() -> int:
         if best_xy:
             anchor = [best_xy[0] * d, best_xy[1] * d, size * d, size * d]
 
+    hud = []
+    for (cx, cy, cw, ch, area) in components(overlay, min_area=max(16, overlay.size // 5000))[:5]:
+        hud.append([int(cx * d), int(cy * d), int(cw * d), int(ch * d)])
     per_frame = [{"index": f.get("index"), "dx": s[1] * d, "dy": s[0] * d} for f, s in zip(frames, shifts)]
     out = {"tool": TOOL, "manifest": str(args.manifest), "downscale": d, "threshold": round(thr, 2),
            "reference_frames": [frames[j].get("index"), frames[k].get("index")],
            "camera_moves": bool(max_shift > 2), "max_camera_shift_px": int(max_shift),
-           "candidates": results, "anchor_bbox": anchor, "camera_shift": per_frame}
+           "candidates": results, "anchor_bbox": anchor, "screen_fixed_regions": hud, "camera_shift": per_frame}
     if results:
         bb = ",".join(map(str, results[0]["bbox"]))
         cmd = f"python scripts/motion_track.py {args.manifest} --bbox {bb}"
@@ -200,6 +215,8 @@ def main() -> int:
             print(f"#{i} bbox {','.join(map(str, r['bbox']))}  area {r['area_px']} px")
         if anchor:
             print(f"anchor (static, textured): {','.join(map(str, anchor))}")
+        for r in out["screen_fixed_regions"]:
+            print(f"screen-fixed overlay (HUD?) left out: {','.join(map(str, r))} (mask it in visual_compare; keep boxes off it)")
         if results:
             print("next: " + out["suggested_command"])
             print("confirm first: python scripts/frame_zoom.py <first frame> --region <around the box> --mark <bbox>")

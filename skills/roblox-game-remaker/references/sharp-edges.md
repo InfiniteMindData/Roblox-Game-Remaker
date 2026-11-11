@@ -7,9 +7,12 @@ delivery.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Timings consistently off by about 2× frame precision | 60 fps container with 30 fps content (duplicate frames) | `probe_video.py --dupes`; count at `effective_fps` |
+| Timings consistently off by about 2× frame precision | 60 fps container with 30 fps content (duplicate frames) | `probe_video.py --dupes`; count at `effective_fps`. `motion_track` drops repeated frames itself and reports `content_fps` |
 | Timings drift over long clips | Variable frame rate recording | Use the `pts_time` values from the manifests, not `index / fps` |
-| Speeds differ between clips | Perspective: the subject moved toward or away from the camera, or the camera zoomed | Side-on test clips; `--anchor-bbox`; per-clip `--px-per-unit` |
+| Speeds differ between clips | Perspective: the subject moved toward or away from the camera, or the camera zoomed | Side-on test clips; `--scale-search`; `camera_solve.py ground` for third-person footage |
+| A steady speed comes with a "halves disagree" note | The anchor or the subject drifts (heavy compression, a changing background) | Trust the widened uncertainty, or pick a sharper anchor with `find_mover.py` |
+| `motion_track` leaves samples out, or says UNRELIABLE | The subject passed behind a HUD element or was lost; the anchor was lost | Read `excluded` in the samples; shorten the range or move the box; `ledger.py` will not import an unreliable track |
+| `find_mover` lists `screen_fixed_regions` | A HUD or watermark stays put on screen while the camera pans | Keep tracking boxes off them; mask them in `visual_compare` |
 | Jump apex varies by 10–20% between measurements | Tracked a body part that animates (hands, hair) | Track the feet or the root region; average 3 or more jumps |
 | Colors don't match any sampled value | Compression, tonemapping or HDR capture | Sample bigger flat regions over several frames; capture in SDR |
 | FOV feels wrong despite the "same" number | Horizontal versus vertical convention, or a different aspect ratio | `remake_calc.py fov` with explicit `--aspect` |

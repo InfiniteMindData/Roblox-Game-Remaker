@@ -10,9 +10,16 @@ Writes into --out (created if missing):
   demo_hud.png     a 1920x1080 "reference" HUD screenshot
   demo_hud_rec.png the same HUD as a slightly-off "recreation" (darker, shifted health bar)
   hud_boxes.json   reference UI boxes for ui_measure.py
+  with --only degraded, the jump and run again as real captures go wrong (same ground truth):
+    demo_jump_h264.mp4, demo_run_h264.mp4   heavy H.264 compression (CRF 32, 4:2:0)
+    demo_run_h264_crf40.mp4                 compression that destroys the background (CRF 40)
+    demo_jump_blur.mkv, demo_run_blur.mkv   motion blur (360-degree shutter)
+    demo_jump_30in60.mkv                    30 fps content in a 60 fps container
+    demo_jump_vfr.mkv                       variable frame rate (jitter and dropped frames)
+    demo_run_hud.mkv                        a HUD panel and an opaque bar over part of the subject's path
   ground_truth.json the true values, so you can check what the tools measured
 
-Scale: 20 pixels per stud at the subject's depth. Lossless FFV1 video (no compression noise).
+Scale: 20 pixels per stud at the subject's depth. The clean clips are lossless FFV1.
 This footage is synthetic and original; it is not from any game.
 
 Examples:
@@ -46,6 +53,12 @@ TRUTH = {
              "takeoff_speed": 40.0, "takeoff_time_s": 0.2},
     "run": {"steady_speed": 20.0, "ramp_time_s": 0.25, "t90_s": 0.225, "start_time_s": 0.2, "camera_pan_px_s": 60.0},
     "hud": {"health_bar_offset_px": [12, 5], "darken": 0.82},
+    "degraded": {"h264_crf": 32, "h264_crf_destroyed": 40, "blur": "360-degree shutter, 8 subframes", "content_fps_30in60": 30,
+                 "vfr": "60 fps with +/-5 ms jitter and every 12th frame dropped", "hud_box_px": [250, 185, 420, 235], "hud_bar_px": [300, 203, 400, 215],
+                 "files": {"demo_jump_h264.mp4": "jump", "demo_run_h264.mp4": "run", "demo_run_h264_crf40.mp4": "run",
+                           "demo_jump_blur.mkv": "jump",
+                           "demo_run_blur.mkv": "run", "demo_jump_30in60.mkv": "jump", "demo_jump_vfr.mkv": "jump",
+                           "demo_run_hud.mkv": "run"}},
     "perspective": {"vfov_deg": 60.0, "pitch_deg": -35.0, "yaw_deg": 20.0, "height": 9.0, "image": [640, 360],
                     "rect_origin": [-2.0, 7.0], "rect_size": [12.0, 12.0],
                     "marker_start": [0.0, 9.0], "marker_heading_deg": 30.0, "sprite_size": [1.2, 2.0],
@@ -53,17 +66,40 @@ TRUTH = {
 }
 
 
-def encode(frames_dir: Path, out: Path) -> None:
+def encode(frames_dir: Path, out: Path, *, h264_crf: int | None = None, vfr_expr: str | None = None) -> None:
+    """Encode f%04d.png: lossless FFV1, or H.264 at a given CRF; vfr_expr sets per-frame timestamps."""
     if not shutil.which("ffmpeg"):
         print("error: ffmpeg not found", file=sys.stderr)
         sys.exit(2)
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", str(frames_dir / "f%04d.png"),
-                    "-c:v", "ffv1", str(out)], check=True)
+    rate = "1000" if vfr_expr else str(FPS)  # a millisecond time base, so setpts keeps sub-frame times
+    cmd = ["ffmpeg", "-v", "error", "-y", "-framerate", rate, "-i", str(frames_dir / "f%04d.png")]
+    if vfr_expr:
+        cmd += ["-vf", f"setpts='{vfr_expr}'", "-fps_mode", "passthrough"]
+    if h264_crf is not None:
+        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", str(h264_crf), "-pix_fmt", "yuv420p"]
+    else:
+        cmd += ["-c:v", "ffv1"]
+    subprocess.run(cmd + [str(out)], check=True)
 
 
-def jump_clip(out: Path) -> None:
+def write_clip(out: Path, render, times, *, blur_subframes: int = 1, shutter: float = 1 / FPS, **enc) -> None:
+    """Render a frame at each time (averaging subframes across a centered shutter for motion blur) and encode."""
+    with tempfile.TemporaryDirectory() as tmp:
+        for i, t in enumerate(times):
+            if blur_subframes > 1:
+                acc = np.zeros_like(render(t), dtype=np.float64)
+                for k in range(blur_subframes):
+                    acc += render(t + ((k + 0.5) / blur_subframes - 0.5) * shutter)
+                img = np.clip(acc / blur_subframes + 0.5, 0, 255).astype(np.uint8)
+            else:
+                img = render(t)
+            Image.fromarray(img).save(Path(tmp) / f"f{i:04d}.png")
+        encode(Path(tmp), out, **enc)
+
+
+def jump_renderer():
     rng = np.random.default_rng(1)
-    w, h, n = 640, 400, 80
+    w, h = 640, 400
     bg = (rng.random((h, w, 3)) * 60 + 40).astype(np.uint8)
     sprite = (rng.random((24, 24, 3)) * 255).astype(np.uint8)
     j = TRUTH["jump"]
@@ -80,22 +116,23 @@ def jump_clip(out: Path) -> None:
         td = tt - rise
         return apex - 0.5 * gf * td * td if td <= fall else 0.0
 
-    with tempfile.TemporaryDirectory() as tmp:
-        for i in range(n):
-            img = bg.copy()
-            y = int(round(300 - height(i / FPS) * PPU))
-            img[y - 12:y + 12, 288:312] = sprite
-            Image.fromarray(img).save(Path(tmp) / f"f{i:04d}.png")
-        encode(Path(tmp), out)
+    def render(t: float):
+        img = bg.copy()
+        y = int(round(300 - height(t) * PPU))
+        img[y - 12:y + 12, 288:312] = sprite
+        return img
+
+    return render
 
 
-def run_clip(out: Path) -> None:
+def run_renderer(hud: bool = False):
     rng = np.random.default_rng(2)
-    w, h, n = 640, 360, 70
+    w, h = 640, 360
     world = (rng.random((h, 1400, 3)) * 80 + 30).astype(np.uint8)
     sprite = (rng.random((20, 20, 3)) * 255).astype(np.uint8)
     r = TRUTH["run"]
     V, T, t0, pan = r["steady_speed"], r["ramp_time_s"], r["start_time_s"], r["camera_pan_px_s"]
+    hx0, hy0, hx1, hy1 = TRUTH["degraded"]["hud_box_px"]
 
     def pos(t: float) -> float:
         tt = t - t0
@@ -103,15 +140,49 @@ def run_clip(out: Path) -> None:
             return 0.0
         return V * tt * tt / (2 * T) if tt < T else V * (tt - T / 2)
 
-    with tempfile.TemporaryDirectory() as tmp:
-        for i in range(n):
-            t = i / FPS
-            cam = int(round(pan * t))
-            img = world[:, cam:cam + w].copy()
-            x = int(round(100 + pos(t) * PPU)) - cam
-            img[200:220, x - 10:x + 10] = sprite
-            Image.fromarray(img).save(Path(tmp) / f"f{i:04d}.png")
-        encode(Path(tmp), out)
+    def render(t: float):
+        cam = int(round(pan * t))
+        img = world[:, cam:cam + w].copy()
+        x = int(round(100 + pos(t) * PPU)) - cam
+        img[200:220, x - 10:x + 10] = sprite
+        if hud:  # a semi-opaque screen-space HUD panel over the subject's path, with an opaque bar across it
+            box = img[hy0:hy1, hx0:hx1].astype(np.float64)
+            img[hy0:hy1, hx0:hx1] = (box * 0.35 + np.array([20, 20, 30]) * 0.65).astype(np.uint8)
+            bx0, by0, bx1, by1 = TRUTH["degraded"]["hud_bar_px"]
+            img[by0:by1, bx0:bx1] = (235, 200, 40)
+        return img
+
+    return render
+
+
+def jump_clip(out: Path) -> None:
+    write_clip(out, jump_renderer(), [i / FPS for i in range(80)])
+
+
+def run_clip(out: Path) -> None:
+    write_clip(out, run_renderer(), [i / FPS for i in range(70)])
+
+
+def vfr_times(n: int) -> list[float]:
+    """Container timestamps of the VFR clip: 60 fps with jitter and one dropped frame in 12."""
+    import math
+
+    return [math.floor((k + math.floor(k / 12) + 0.3 * math.sin(1.7 * k)) / FPS * 1000 + 1e-6) / 1000 for k in range(n)]
+
+
+def degraded_clips(out_dir: Path) -> None:
+    """Footage problems seen in real captures, each with the same ground truth as the clean clips."""
+    jr, rr = jump_renderer(), run_renderer()
+    jt, rt = [i / FPS for i in range(80)], [i / FPS for i in range(70)]
+    crf = TRUTH["degraded"]["h264_crf"]
+    write_clip(out_dir / "demo_jump_h264.mp4", jr, jt, h264_crf=crf)
+    write_clip(out_dir / "demo_run_h264.mp4", rr, rt, h264_crf=crf)
+    write_clip(out_dir / "demo_run_h264_crf40.mp4", rr, rt, h264_crf=TRUTH["degraded"]["h264_crf_destroyed"])
+    write_clip(out_dir / "demo_jump_blur.mkv", jr, jt, blur_subframes=8)
+    write_clip(out_dir / "demo_run_blur.mkv", rr, rt, blur_subframes=8)
+    write_clip(out_dir / "demo_jump_30in60.mkv", jr, [2 * (i // 2) / FPS for i in range(80)])
+    write_clip(out_dir / "demo_jump_vfr.mkv", jr, vfr_times(72), vfr_expr="(N+floor(N/12)+0.3*sin(1.7*N))/(60*TB)")
+    write_clip(out_dir / "demo_run_hud.mkv", run_renderer(hud=True), rt)
 
 
 class PerspectiveCamera:
@@ -242,15 +313,16 @@ CLIPS = {
     "run": lambda out: run_clip(out / "demo_run.mkv"),
     "perspective": lambda out: perspective_clip(out / "demo_perspective.mkv"),
     "hud": hud,
+    "degraded": degraded_clips,
 }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--only", help=f"comma-separated subset of: {', '.join(CLIPS)} (default: all)")
+    ap.add_argument("--only", help=f"comma-separated subset of: {', '.join(CLIPS)} (default: all but degraded)")
     args = ap.parse_args()
-    names = [n.strip() for n in args.only.split(",")] if args.only else list(CLIPS)
+    names = [n.strip() for n in args.only.split(",")] if args.only else [n for n in CLIPS if n != "degraded"]
     unknown = [n for n in names if n not in CLIPS]
     if unknown:
         print(f"error: unknown clip(s) {', '.join(unknown)}; choose from {', '.join(CLIPS)}", file=sys.stderr)

@@ -67,6 +67,52 @@ their content was read from the official GitHub sources above, which publish the
 | Presets | Every preset applied to the template and loaded in Lune | Valid Luau; measured keys are never overwritten |
 | Whole workflow | `tests/test_end_to_end.py`: init → evidence → probe/extract/find_mover/track → import → breakdown → targets → preset + measured Config → greybox → harness log → comparisons → delivery | Every phase gate advances as expected |
 
+## Degraded footage (1.2.0)
+
+`make_demo_footage.py --only degraded` renders the demo jump and run again the way real captures
+go wrong, with the same ground truth; `tests/test_degraded_footage.py` asserts that each result
+is inside its bound, or warns with an uncertainty that covers the truth, or stops with an error.
+Results with the clean-footage boxes (truth: apex 8, rise 0.400 s, fall 0.283 s, g 100/200;
+run 20 studs/s, t90 0.225 s):
+
+| Variant | Result | Behavior |
+|---|---|---|
+| H.264 CRF 32 (jump) | apex 7.999, rise 0.401, fall 0.283, g 99.6/199.5 | Accurate; 8 low-score samples warned |
+| H.264 CRF 32 (run) | 19.45 ± 0.61 studs/s, t90 0.198 ± 0.044 s | Anchor drifts: split-half check widens the uncertainty to cover the truth |
+| H.264 CRF 40 (run) | none | Stops: "the template has no texture" (the background is destroyed) |
+| Motion blur, 360° shutter (jump) | apex 8.011, rise 0.398, fall 0.287, g 101.0/194.1 ± 5.8 | Accurate; low-score warning |
+| Motion blur (run) | 20.04 ± 0.15 studs/s, t90 0.233 s | Accurate; low-score warning |
+| 30 fps content in 60 fps (jump) | apex 8.022, rise 0.402, fall 0.287 ± 0.035 s | Repeated frames dropped; `content_fps` 28.6; precision one content frame |
+| Variable frame rate, dropped frames (jump) | apex 8.002, rise 0.402, fall 0.281, g 99.0/202.6 | Accurate from per-frame timestamps |
+| HUD bar over the subject (run) | 20.005 studs/s, t90 0.227 s | 12–13 lost samples excluded and reported |
+| Third-person, fixed template (`camera_solve`) | none | Withheld: the track is unreliable |
+
+Found and fixed while building this suite (each was a confident wrong number or a misleading
+failure before 1.2.0):
+
+- `motion_track` jump fits included a grounded sample on each side of the flight. Unless
+  takeoff fell exactly on a frame, that biased the rise gravity: 88.9 (truth 100) and rise time
+  0.427 s (truth 0.400) on the VFR clip. The fits now use airborne samples only.
+- `probe_video --dupes` counted frames where nothing moves as duplicates: the clean 60 fps jump
+  read as 30.75 fps content and the 30-in-60 clip as 16.5 fps. It now estimates the update rate
+  only where something moves (clean 58.5, 30-in-60 30.7).
+- `motion_track` claimed one container frame (16.7 ms) of timing precision on 30 fps content; the
+  30-in-60 fall time missed the truth by more than its uncertainty. Repeated frames are now
+  detected and dropped.
+- `motion_track` ignored the anchor's match score: under H.264 the anchor drifted and the run
+  read 19.04 studs/s with a ±0.15 uncertainty. Lost-anchor samples are now excluded, and the
+  split-half check widens the uncertainty when drift remains.
+- A lost match was extrapolated off-screen and crashed with "search window is smaller than the
+  template". Predictions are now clamped to the frame and stop after weak matches.
+- `find_mover` offered a screen-fixed HUD panel as the moving subject on a panning shot (IoU 0
+  with the real subject). Screen-fixed regions are now detected and left out.
+- A fixed-size template drifted onto the background as a third-person subject shrank (7.7 studs/s
+  for a true 10). `--scale-search` tracks it (9.99 ± 0.22), and `camera_solve` withholds numbers
+  from an unreliable track.
+
+Not exercised on degraded footage: `pose_track` (it shares the tracker but not the exclusion
+logic), `audio_onsets`, and `camera_solve` with compressed third-person footage.
+
 ## Not measured yet
 
 - The skill evals in `skills/roblox-game-remaker/evals/` have not been run with and without the

@@ -3,8 +3,9 @@
 
 Reports nominal frame rate, variable-frame-rate (VFR) behavior, resolution and aspect, and
 (with --dupes) near-duplicate consecutive frames, which reveal the effective update rate of the
-content. A 60 fps file with ~50% duplicates is 30 fps content: timing precision is then one
-33.3 ms frame, not 16.7 ms.
+content. A 60 fps file whose frames repeat in pairs while things move is 30 fps content: timing precision
+is then one 33.3 ms frame, not 16.7 ms. Runs of 6 or more identical frames count as the scene
+holding still and are left out of the update-rate estimate.
 
 Examples:
   python probe_video.py clip.mp4
@@ -23,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import remake_common as rc  # noqa: E402
 
 TOOL = "probe_video"
+STATIC_RUN = 6  # this many identical frames in a row = the scene holds still (content below ~9 fps is not assumed)
 
 
 def analyze_timestamps(ts: list[float]) -> dict:
@@ -91,16 +93,21 @@ def duplicate_analysis(video: Path, width: int, height: int, region, threshold: 
         threshold = max(0.02, 0.2 * p75)
     dup = mad < threshold
     runs: dict[int, int] = {}
+    static = np.zeros(len(dup), bool)
     run_len = 0
-    for is_dup in dup:
+    for i, is_dup in enumerate(list(dup) + [False]):
         if is_dup:
             run_len += 1
         else:
             if run_len:
                 runs[run_len] = runs.get(run_len, 0) + 1
+                if run_len >= STATIC_RUN:
+                    static[i - run_len:i] = True
             run_len = 0
-    if run_len:
-        runs[run_len] = runs.get(run_len, 0) + 1
+    # Long runs of identical frames are a scene holding still, not a slow update rate: estimate the
+    # update rate only from the stretches where something moves.
+    moving = ~static
+    dup_moving = float(dup[moving].mean()) if moving.sum() >= 10 else None
     pct = np.percentile(mad, [5, 25, 50, 75, 95]).tolist()
     return {
         "frames_analyzed": int(count),
@@ -109,6 +116,9 @@ def duplicate_analysis(video: Path, width: int, height: int, region, threshold: 
         "low_motion": bool(np.percentile(mad, 95) < 0.5),
         "duplicate_pairs": int(dup.sum()),
         "duplicate_ratio": round(float(dup.mean()), 4),
+        "static_pairs": int(static.sum()),
+        "moving_pairs": int(moving.sum()),
+        "duplicate_ratio_moving": round(dup_moving, 4) if dup_moving is not None else None,
         "duplicate_run_histogram": {str(k): v for k, v in sorted(runs.items())},
         "mad_percentiles": {k: round(v, 4) for k, v in zip(("p5", "p25", "p50", "p75", "p95"), pct)},
         "region": list(region) if region else None,
@@ -155,10 +165,12 @@ def build_report(video: Path, args) -> dict:
         region = rc.parse_bbox(args.dupes_region, "--dupes-region") if args.dupes_region else None
         d = duplicate_analysis(video, width, height, region, args.dupes_threshold, args.max_frames)
         report["dupes"] = d
-        if nominal:
-            unique = d["frames_analyzed"] - d["duplicate_pairs"]
-            report["effective_fps"] = round(nominal * unique / d["frames_analyzed"], 3)
+        if nominal and d["duplicate_ratio_moving"] is not None:
+            report["effective_fps"] = round(nominal * (1 - d["duplicate_ratio_moving"]), 3)
             report["timing_precision_ms"] = round(1000.0 / max(report["effective_fps"], 1e-6), 3)
+        else:
+            report["effective_fps"] = None
+            report["timing_precision_ms"] = None
     else:
         report["effective_fps"] = report["fps_nominal"]
         report["timing_precision_ms"] = round(1000.0 / nominal, 3) if nominal else None
@@ -171,14 +183,17 @@ def warnings_for(r: dict) -> list[str]:
     if r.get("vfr"):
         out.append("Variable frame rate: use per-frame pts_time from extract_frames manifests, not index/fps.")
     d = r.get("dupes")
-    if d and d["duplicate_ratio"] > 0.1:
+    if d and d.get("duplicate_ratio_moving") is not None and d["duplicate_ratio_moving"] > 0.1:
         out.append(
-            f"{d['duplicate_ratio']:.0%} near-duplicate frames: content updates at about "
+            f"{d['duplicate_ratio_moving']:.0%} of frames repeat the previous one while things move: content updates at about "
             f"{r.get('effective_fps')} fps; count timings at that rate."
         )
-    if d and d.get("low_motion"):
-        out.append("Very little motion in the analyzed area: duplicate detection is unreliable; "
+    if d and d.get("duplicate_ratio_moving") is None:
+        out.append("Almost nothing moves in the analyzed area, so the content update rate is unknown (reported as null); "
                    "use --dupes-region on a moving element such as the character.")
+    elif d and d.get("low_motion"):
+        out.append("Very little motion in the analyzed area: duplicate detection may be unreliable; "
+                   "check with --dupes-region on a moving element such as the character.")
     if r.get("fps_nominal") and r["fps_nominal"] < 50:
         out.append("Below 50 fps: fast events (attack frames, hit-stop) may fall between frames.")
     if r.get("sample_aspect_ratio") not in (None, "1:1", "0:1", "N/A"):
@@ -196,9 +211,14 @@ def print_text(r: dict) -> None:
     print(f"variable rate:    {'YES' if r['vfr'] else 'no'}")
     if "dupes" in r:
         d = r["dupes"]
-        print(f"duplicates:       {d['duplicate_pairs']}/{d['frames_analyzed'] - 1} pairs ({d['duplicate_ratio']:.1%}), runs {d['duplicate_run_histogram']}")
+        moving = f"{d['duplicate_ratio_moving']:.1%}" if d["duplicate_ratio_moving"] is not None else "n/a"
+        print(f"duplicates:       {d['duplicate_pairs']}/{d['frames_analyzed'] - 1} pairs ({d['duplicate_ratio']:.1%}); while moving {moving}; "
+              f"{d['static_pairs']} pairs in still stretches; runs {d['duplicate_run_histogram']}")
         print(f"MAD percentiles:  {d['mad_percentiles']}")
-    print(f"effective fps:    {r.get('effective_fps')}  (timing precision ±{r.get('timing_precision_ms')} ms)")
+    if r.get("effective_fps"):
+        print(f"effective fps:    {r.get('effective_fps')}  (timing precision ±{r.get('timing_precision_ms')} ms)")
+    else:
+        print("effective fps:    unknown (too little motion to tell)")
     for w in r["warnings"]:
         print(f"WARNING: {w}")
 

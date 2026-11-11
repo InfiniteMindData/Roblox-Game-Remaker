@@ -167,11 +167,18 @@ def cmd_import(args) -> int:
 
 
 def import_motion_track(args, track: dict) -> int:
+    if track.get("reliable") is False:
+        rc.fail(f"{args.track} is marked unreliable by motion_track ({'; '.join(track.get('warnings') or [])}); "
+                "fix the track instead of importing it", rc.EXIT_FAIL)
     unit = track.get("unit", "px")
     ppu = track.get("px_per_unit")
     base = f"motion_track {args.track.name}: bbox {track.get('bbox')}" + (f", {ppu} px/{unit}" if ppu else ", pixels")
     if track.get("anchor_bbox"):
         base += f", camera motion cancelled with anchor {track['anchor_bbox']}"
+    if track.get("content_fps"):
+        base += f", content updates at {track['content_fps']} fps (repeated frames dropped)"
+    if track.get("excluded_samples"):
+        base += f", {track['excluded_samples']} lost samples excluded"
     samples = track.get("samples", [])
     px = 1.0 / ppu if ppu else 1.0
     if "jump" in track:
@@ -198,7 +205,7 @@ def import_motion_track(args, track: dict) -> int:
         rows = [
             ("ground_speed", "steady ground speed", s["steady_speed"],
              round(max(2 * s.get("steady_speed_std", 0.0), 0.005 * s["steady_speed"]), 4), f"{unit}/s"),
-            ("accel_t90", "time to 90% speed", s["t90_s"], round(dt, 5), "s"),
+            ("accel_t90", "time to 90% speed", s["t90_s"], round(max(dt, s.get("t90_uncertainty_s") or 0), 5), "s"),
             ("accel_ramp" if model == "linear_ramp" else "accel_tau",
              "linear ramp duration" if model == "linear_ramp" else "exponential time constant", ramp, round(dt, 5), "s"),
         ]
