@@ -17,6 +17,10 @@ Writes into --out (created if missing):
     demo_jump_30in60.mkv                    30 fps content in a 60 fps container
     demo_jump_vfr.mkv                       variable frame rate (jitter and dropped frames)
     demo_run_hud.mkv                        a HUD panel and an opaque bar over part of the subject's path
+  with --only extras, small inputs for the evals:
+    demo_menu_track.json   a tracked menu slide-in (Back Out, 0.35 s), motion_track format
+    demo_build_jump.log    a build's harness log of a jump (apex 7.5, rise 0.39 s, fall 0.28 s)
+    demo_sfx_ref.wav, demo_sfx_new.wav   a reference sound and an original replacement to tune
   ground_truth.json the true values, so you can check what the tools measured
 
 Scale: 20 pixels per stud at the subject's depth. The clean clips are lossless FFV1.
@@ -53,6 +57,11 @@ TRUTH = {
              "takeoff_speed": 40.0, "takeoff_time_s": 0.2},
     "run": {"steady_speed": 20.0, "ramp_time_s": 0.25, "t90_s": 0.225, "start_time_s": 0.2, "camera_pan_px_s": 60.0},
     "hud": {"health_bar_offset_px": [12, 5], "darken": 0.82},
+    "extras": {"menu": {"style": "Back Out", "duration_s": 0.35, "start_s": 0.1, "from_px": -400.0, "to_px": 120.0, "noise_px": 0.2},
+               "build_jump": {"apex": 7.5, "rise_s": 0.39, "fall_s": 0.28, "jump_at_s": 0.5},
+               "sfx_ref": {"hz": 660.0, "amp": 0.4, "duration_s": 0.2, "decay_s": 0.06, "start_s": 0.3},
+               "sfx_new": {"hz": 691.21, "amp": 0.533, "duration_s": 0.23, "decay_s": 0.069, "start_s": 0.4,
+                           "vs_ref": "+80 cents, +2.5 dB, 1.15x longer"}},
     "degraded": {"h264_crf": 32, "h264_crf_destroyed": 40, "blur": "360-degree shutter, 8 subframes", "content_fps_30in60": 30,
                  "vfr": "60 fps with +/-5 ms jitter and every 12th frame dropped", "hud_box_px": [250, 185, 420, 235], "hud_bar_px": [300, 203, 400, 215],
                  "files": {"demo_jump_h264.mp4": "jump", "demo_run_h264.mp4": "run", "demo_run_h264_crf40.mp4": "run",
@@ -308,21 +317,77 @@ def hud(out_dir: Path) -> None:
     (out_dir / "hud_boxes_rec.json").write_text(json.dumps(rec, indent=2) + "\n", encoding="utf-8")
 
 
+def extras(out_dir: Path) -> None:
+    """Small non-video inputs for the evals: a tracked UI tween, a build's harness log, two sounds."""
+    import math
+    import wave
+
+    e = TRUTH["extras"]
+    rng = np.random.default_rng(6)
+    c1, c3 = 1.70158, 2.70158
+    m = e["menu"]
+    samples = []
+    for i in range(60):
+        t = i / FPS
+        x = min(max((t - m["start_s"]) / m["duration_s"], 0.0), 1.0)
+        back_out = 1 + c3 * (x - 1) ** 3 + c1 * (x - 1) ** 2  # Easing.luau Back Out
+        px = m["from_px"] + (m["to_px"] - m["from_px"]) * back_out + rng.normal(0, 0.2)
+        samples.append({"sample": i, "index": i, "t": round(t, 6), "x_px": round(px, 3), "y_px": 540.0, "score": 1.0, "u": 0.0, "v": 0.0})
+    (out_dir / "demo_menu_track.json").write_text(json.dumps({"tool": "motion_track", "schema": 1, "unit": "px", "bbox": [0, 520, 40, 40],
+                                                              "samples": samples, "low_score_samples": 0}, indent=1) + "\n", encoding="utf-8")
+    b = e["build_jump"]
+    g_r, g_f, v0 = 2 * b["apex"] / b["rise_s"] ** 2, 2 * b["apex"] / b["fall_s"] ** 2, 2 * b["apex"] / b["rise_s"]
+    y, vy, air, done, rows, lines = 3.0, 0.0, False, False, [], ['REMAKE_MEASURE {"k":"e","t":0,"n":"session"}']
+    for i in range(120):
+        t = i / FPS
+        st = 1
+        if t >= b["jump_at_s"] and not air and not done:
+            air, vy = True, v0
+            lines.append(f'REMAKE_MEASURE {{"k":"e","t":{t:.4f},"n":"jump"}}')
+        if air:
+            g = g_r if vy > 0 else g_f
+            y += vy / FPS - 0.5 * g / FPS / FPS
+            vy -= g / FPS
+            st = 2 if vy > 0 else 3
+            if y <= 3.0:
+                y, vy, air, done, st = 3.0, 0.0, False, True, 1
+                lines.append(f'REMAKE_MEASURE {{"k":"e","t":{t:.4f},"n":"land"}}')
+        rows.append([round(t, 4), 0.0, round(y, 4), 0.0, 0.0, round(vy, 3), 0.0, st, 0.0])
+        if len(rows) == 30:
+            lines.append("REMAKE_MEASURE " + json.dumps({"k": "b", "s": rows}))
+            rows = []
+    (out_dir / "demo_build_jump.log").write_text("\n".join(f"12:00:00.000  {ln}  -  Client" for ln in lines) + "\n", encoding="utf-8")
+    rate = 44100
+    for name, spec in (("demo_sfx_ref.wav", e["sfx_ref"]), ("demo_sfx_new.wav", e["sfx_new"])):
+        t = np.arange(int(1.0 * rate)) / rate
+        x = rng.normal(0, 0.001, len(t))
+        mask = (t >= spec["start_s"]) & (t < spec["start_s"] + spec["duration_s"])
+        tt = t[mask] - spec["start_s"]
+        env = np.exp(-tt / spec["decay_s"]) * np.minimum(1, tt / 0.004)
+        x[mask] += spec["amp"] * env * np.sin(2 * math.pi * spec["hz"] * tt)
+        with wave.open(str(out_dir / name), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes((np.clip(x, -1, 1) * 32767).astype(np.int16).tobytes())
+
+
 CLIPS = {
     "jump": lambda out: jump_clip(out / "demo_jump.mkv"),
     "run": lambda out: run_clip(out / "demo_run.mkv"),
     "perspective": lambda out: perspective_clip(out / "demo_perspective.mkv"),
     "hud": hud,
     "degraded": degraded_clips,
+    "extras": extras,
 }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--only", help=f"comma-separated subset of: {', '.join(CLIPS)} (default: all but degraded)")
+    ap.add_argument("--only", help=f"comma-separated subset of: {', '.join(CLIPS)} (default: all but degraded and extras)")
     args = ap.parse_args()
-    names = [n.strip() for n in args.only.split(",")] if args.only else [n for n in CLIPS if n != "degraded"]
+    names = [n.strip() for n in args.only.split(",")] if args.only else [n for n in CLIPS if n not in ("degraded", "extras")]
     unknown = [n for n in names if n not in CLIPS]
     if unknown:
         print(f"error: unknown clip(s) {', '.join(unknown)}; choose from {', '.join(CLIPS)}", file=sys.stderr)

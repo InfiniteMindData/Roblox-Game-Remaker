@@ -46,6 +46,11 @@ Measurement beyond side-on 2D footage.
   `measure_compare.py` judges it as `input_latency`; `event_stats.py --latency press/move`
   measures the same from footage with an input overlay or a filmed controller; recipe 19 states
   the limits (no visible input means `ASSUMED`; filmed controllers include display latency).
+- Evals: ten new cases (19 in total) for the new tools, third-person perspective, degraded
+  footage where the right answer is a wide uncertainty, a drop rate from too few samples, input
+  latency without a visible input, a regression check, and a second prompt that should not
+  trigger the skill. `make_demo_footage.py --only extras` writes their small inputs, and
+  `tests/test_evals.py` keeps the cases, inputs and pattern checks consistent with the tools.
 - `remake_common.line_plot`: Pillow line charts shared by the new tools.
 - `ledger.py import`: imports any tool's `measurements` block (the new tools all write one);
   camera and other Config inputs never become harness targets.

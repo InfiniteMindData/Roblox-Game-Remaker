@@ -1,6 +1,6 @@
 {
   "skill_name": "roblox-game-remaker",
-  "setup": "python examples/demo/make_demo_footage.py --out evals/files/demo",
+  "setup": "python examples/demo/make_demo_footage.py --out evals/files/demo --only jump,run,perspective,hud,degraded,extras",
   "evals": [
     {
       "id": 1,
@@ -127,6 +127,137 @@
         "Does not start the remake intake or breakdown"
       ],
       "checks": {"must_match": ["(?i)(updateasync|pcall)"], "must_not_match": ["(?i)breakdown_init"]}
+    },
+    {
+      "id": 10,
+      "name": "camera-fov-from-lines",
+      "prompt": "Frame 0 of evals/files/demo/demo_perspective.mkv is from my third-person game (640x360). The painted floor square is 12 by 12 studs; its corners are at 187,305 / 484,218 / 360,113 / 184,140 (in that order around the square). What Camera.FieldOfView and pitch should my Roblox camera use?",
+      "expected_output": "Solves the camera from the square's edges (camera_solve.py vanishing or ground), reports a vertical FOV of about 60 degrees and a pitch of about -35 degrees, each with an uncertainty from 1 px marking error, notes that Roblox FieldOfView is vertical, and gives camera height about 9 studs.",
+      "files": ["evals/files/demo/demo_perspective.mkv"],
+      "assertions": [
+        "Uses the marked lines (vanishing points or a homography), not a guess",
+        "Reports a vertical FOV between 57 and 63 degrees with an uncertainty",
+        "Reports a pitch between -37 and -33 degrees",
+        "States that Roblox FieldOfView is vertical"
+      ],
+      "checks": {"must_match": ["(?i)(field ?of ?view|vfov|vertical fov)[^\\n]{0,40}\\b(5[7-9]|6[0-3])(\\.\\d+)?", "(?i)pitch[^\\n]{0,30}-3[3-7]", "±"], "must_not_match": []}
+    },
+    {
+      "id": 11,
+      "name": "third-person-speed",
+      "prompt": "In evals/files/demo/demo_perspective.mkv my character runs diagonally away from a third-person camera across a painted 12x12 stud square (corners 187,305 / 484,218 / 360,113 / 184,140). How fast does it run, in studs per second?",
+      "expected_output": "Does not use a single pixels-per-stud scale: tracks the character with scale search (the subject shrinks with distance), converts the feet to the ground plane with camera_solve.py ground, and reports about 10 studs/s with an uncertainty of a few tenths, plus the ramp time.",
+      "files": ["evals/files/demo/demo_perspective.mkv"],
+      "assertions": [
+        "Explains that one px-per-stud scale is wrong under perspective",
+        "Converts through the ground plane (camera_solve ground or a homography)",
+        "Reports between 9.5 and 10.5 studs/s with an uncertainty"
+      ],
+      "checks": {"must_match": ["(?i)(camera_solve|homograph|ground plane)", "(?i)\\b(9\\.[5-9]|10\\.[0-5])\\d*\\s*(±|studs)"], "must_not_match": []}
+    },
+    {
+      "id": 12,
+      "name": "degraded-footage-wide-uncertainty",
+      "prompt": "evals/files/demo/demo_run_h264.mp4 is a heavily compressed upload of a standing start (side-on, panning camera, 20 px per stud). Give me the run speed to 0.1 studs/s.",
+      "expected_output": "Measures it (anchor for the pan), reports about 19.4 to 20 studs/s with a wide uncertainty (about ±0.6 or more) because the compressed background makes the anchor drift (the split-half check), and says plainly that 0.1 studs/s precision is not supported by this footage; asks for a cleaner capture if that precision matters.",
+      "files": ["evals/files/demo/demo_run_h264.mp4"],
+      "assertions": [
+        "Reports an uncertainty of at least 0.4 studs/s",
+        "Says the requested precision is not supported by this footage, and why (compression, drift)",
+        "Does not present a number to 0.1 studs/s as reliable"
+      ],
+      "checks": {"must_match": ["(?i)(compress|drift|artifact)", "±\\s*(0\\.[4-9]|[1-9])"], "must_not_match": ["(?i)±\\s*0\\.0\\d\\s*studs"]}
+    },
+    {
+      "id": 13,
+      "name": "drop-rate-few-samples",
+      "prompt": "I watched 20 kills of the slime and the rare sword dropped 3 times. What drop rate do I put in my remake?",
+      "expected_output": "Reports the rate as an interval, 3 of 20 with a 95% exact binomial interval of about 0.032 to 0.379 (event_stats.py --counts 3/20), says this does not support '15%', gives the trials needed for a tighter estimate (about 224 for ±5%), and treats the build value as ASSUMED inside the interval until more data exists.",
+      "files": [],
+      "assertions": [
+        "Gives an interval close to 0.032-0.379 (or 3.2%-37.9%)",
+        "Does not state the drop rate as 15% without the interval",
+        "Says how many more kills would narrow it",
+        "Labels the chosen build value as assumed"
+      ],
+      "checks": {"must_match": ["(?i)(0?\\.03[12]|3\\.[12]\\s*%)", "(?i)(0?\\.37[89]|37\\.[89]\\s*%)", "(?i)assum"], "must_not_match": ["(?i)drop rate (is|of|=)\\s*15\\s*%"]}
+    },
+    {
+      "id": 14,
+      "name": "fit-ui-tween",
+      "prompt": "evals/files/demo/demo_menu_track.json is a motion_track output of my menu panel sliding in (x_px over time, 60 fps). Recreate the tween exactly in Roblox.",
+      "expected_output": "Fits the samples with fit_curve.py rather than guessing the curve, finds Back Out with a duration of about 0.35 s (± half a frame), reports whether close alternatives are distinguishable, and gives TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), noting to confirm against TweenService:GetValue in Studio.",
+      "files": ["evals/files/demo/demo_menu_track.json"],
+      "assertions": [
+        "Ran fit_curve.py (or an equivalent fit over all easing curves)",
+        "Identifies Back Out",
+        "Gives a duration of 0.34-0.36 s"
+      ],
+      "checks": {"must_match": ["EasingStyle\\.Back", "EasingDirection\\.Out", "\\b0\\.3[4-6]"], "must_not_match": []}
+    },
+    {
+      "id": 15,
+      "name": "compare-build-clip",
+      "prompt": "Here is a harness log of my Roblox build's jump: evals/files/demo/demo_build_jump.log. The reference is evals/files/demo/demo_jump.mkv (side-on, 20 px per stud). How far off is my jump, over the whole motion?",
+      "expected_output": "Tracks the reference, then compares the whole jump over time with clip_compare.py (reference track vs harness log), and with measure_compare for the summary numbers; reports the build's apex about 0.5 studs low (7.5 vs 8), the apex and landing time offsets, and the position error, and suggests raising JumpApex and checking the fall gravity.",
+      "files": ["evals/files/demo/demo_jump.mkv", "evals/files/demo/demo_build_jump.log"],
+      "assertions": [
+        "Ran clip_compare.py or compared the motion over time",
+        "Reports the apex about 0.5 studs low",
+        "Suggests a concrete Config change"
+      ],
+      "checks": {"must_match": ["(?i)clip_compare", "(?i)apex", "(?i)(JumpApex|FallGravityMultiplier|Gravity)"], "must_not_match": []}
+    },
+    {
+      "id": 16,
+      "name": "tune-replacement-sound",
+      "prompt": "evals/files/demo/demo_sfx_new.wav is my own replacement for the jump sound in the reference clip; the reference segment is evals/files/demo/demo_sfx_ref.wav. How do I make mine match?",
+      "expected_output": "Runs audio_compare.py compare, reports the replacement about +80 cents sharp, +2.5 dB louder and 1.15x longer with a similar envelope shape, and gives Roblox fixes: AudioPitchShifter.Pitch (or PlaybackSpeed, noting it also changes length) about x0.955, AudioPlayer.Volume about x0.75, and trimming the tail.",
+      "files": ["evals/files/demo/demo_sfx_ref.wav", "evals/files/demo/demo_sfx_new.wav"],
+      "assertions": [
+        "Reports pitch, level and duration differences with numbers",
+        "Gives Roblox-specific fixes",
+        "Keeps the replacement original (does not suggest using the reference audio)"
+      ],
+      "checks": {"must_match": ["(?i)cents", "(?i)\\bdB\\b", "(?i)(AudioPitchShifter|PlaybackSpeed)"], "must_not_match": ["(?i)upload the (original|reference) (sound|audio)"]}
+    },
+    {
+      "id": 17,
+      "name": "input-latency-without-overlay",
+      "prompt": "From evals/files/demo/demo_jump.mkv, how many frames does the game take to respond to the jump button?",
+      "expected_output": "Explains that the clip shows no input (no overlay, no filmed controller), so input-to-response latency cannot be measured from it; records it as ASSUMED or UNKNOWN, and asks for a capture with an input overlay (recipe 19), noting that the harness can time the build's side.",
+      "files": ["evals/files/demo/demo_jump.mkv"],
+      "assertions": [
+        "Says latency cannot be measured without a visible input",
+        "Does not invent a frame count",
+        "Asks for an input overlay or filmed controller"
+      ],
+      "checks": {"must_match": ["(?i)(overlay|visible (input|press|controller)|filmed controller)", "(?i)(assum|unknown|cannot|can.t)"], "must_not_match": ["(?i)(responds|latency is|takes) (in |about )?\\d+ frames"]}
+    },
+    {
+      "id": 18,
+      "name": "regression-check-after-tuning",
+      "prompt": "I just changed FallGravityMultiplier in my remake. How do I make sure I didn't make anything else worse?",
+      "expected_output": "Re-runs the comparisons (visual_compare batch, measure_compare on a fresh harness log, clip_compare) and scores the iteration with fidelity_report.py --diff-log --label, which flags regressions against the previous iteration and exits 1 on one; changes one subsystem per iteration.",
+      "files": [],
+      "assertions": [
+        "Uses fidelity_report.py (scorecard and history)",
+        "Mentions re-measuring before scoring",
+        "Treats a regression as something to fix before the next change"
+      ],
+      "checks": {"must_match": ["(?i)fidelity_report", "(?i)regress"], "must_not_match": []}
+    },
+    {
+      "id": 19,
+      "name": "generic-roblox-should-not-trigger",
+      "prompt": "How do I make a part spin forever in Roblox?",
+      "expected_output": "A normal Roblox answer (a HingeConstraint motor or AngularVelocity constraint for physics, or rotating the CFrame each frame with RunService for an anchored part). The remake workflow (intake, breakdown, footage) is not started.",
+      "files": [],
+      "assertions": [
+        "Answers the question directly",
+        "Does not start the remake intake, breakdown or footage analysis"
+      ],
+      "checks": {"must_match": ["(?i)(HingeConstraint|AngularVelocity|RunService|TweenService|CFrame)"], "must_not_match": ["(?i)(breakdown_init|remake_status|00-intake|reference footage)"]}
     }
   ]
 }
