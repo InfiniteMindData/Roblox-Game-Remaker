@@ -73,9 +73,21 @@ def evaluate(remake: Path, config: Path | None) -> dict:
     gates.append(gate(bool(accessible), f"{len(ev)} sources ({len(accessible)} usable, {len(blocked)} inaccessible)",
                       "Research and record sources with ledger.py add-evidence; ask the user for captures (research-protocol.md)."))
 
-    gates.append(gate(bool(ms) and bool(shots), f"{len(ms)} measurements, {len(shots)} shots",
-                      "Measure footage (probe_video, extract_frames, find_mover, motion_track), import with ledger.py import-track, "
-                      "and add matched shots to shots.json.", partial=bool(ms) or bool(shots)))
+    # UI work from still screenshots measures element boxes instead of shots: remake/ui/*.json in
+    # ui_measure's boxes format counts as this phase's comparison target.
+    def is_reference_boxes(p: Path) -> bool:
+        d = load_json(p, {})
+        # boxes measured from a recreation capture are written by ui_measure itself; they are not references
+        return (isinstance(d, dict) and isinstance(d.get("elements"), list) and bool(d.get("reference_resolution"))
+                and d.get("tool") != "ui_measure")
+
+    ui_boxes = [p for p in (remake / "ui").glob("*.json") if is_reference_boxes(p)]
+    shot_like = len(shots) + len(ui_boxes)
+    gates.append(gate(bool(ms) and shot_like > 0, f"{len(ms)} measurements, {len(shots)} shots, {len(ui_boxes)} UI box sets",
+                      "Video: probe_video, extract_frames, find_mover, motion_track, ledger.py import-track, and matched shots in "
+                      "shots.json. Still screenshots (HUD, menus): frame_zoom to read boxes, confirm them with --mark, "
+                      "palette_extract for colors, ledger.py add-measurement, and save the boxes as remake/ui/ref-boxes.json.",
+                      partial=bool(ms) or shot_like > 0))
 
     bd_path = remake / "breakdown.md"
     if bd_path.is_file():
@@ -113,6 +125,8 @@ def evaluate(remake: Path, config: Path | None) -> dict:
                       "Put measured values in Config.luau with Config.Evidence entries, then run config_check.py remake."))
 
     reports = list((remake / "diff").rglob("report.json")) + list((remake / "diff").rglob("summary.json"))
+    reports += [p for p in (remake / "diff").rglob("*.json")
+                if p.name not in ("report.json", "summary.json") and load_json(p, {}).get("tool") in ("ui_measure", "clip_compare")]
     logs = list((remake / "logs").glob("*.log"))
     diff_log = read(remake / "diff-log.md")
     filled = [m for m in re.findall(r"^- after:[ \t]*(\S.*)$", diff_log, re.M)]
@@ -127,7 +141,8 @@ def evaluate(remake: Path, config: Path | None) -> dict:
     gates.append(gate(bool(filled) and (bool(reports) or bool(logs)) and not regressed, detail,
                       ("Fix the regressions in remake/scorecard.md first (the last change made them), then re-run "
                        "fidelity_report.py remake --diff-log." if regressed else
-                       "Capture shots and harness logs, run visual_compare.py / measure_compare.py / clip_compare.py, then "
+                       "Capture shots and harness logs, run visual_compare.py / measure_compare.py / clip_compare.py "
+                       "(UI: studio_snippets.py ui-rects, ui_measure.py --from-capture, --compare --out remake/diff/...), then "
                        "score the iteration with fidelity_report.py remake --diff-log --label \"<what changed>\"."),
                       partial=bool(reports) or bool(logs)))
 

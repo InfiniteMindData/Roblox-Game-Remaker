@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.3.0 — 2026-11-11
+
+UI layout verification, end to end. Found by running the whole workflow in Studio on a menu
+remake built from two screenshots: an homage to a fighting game's main menu (original names and
+art), whose layout passed at 0.41% of the screen only with hand-written tooling.
+
+- `ui_measure.py --from-capture CAPTURE RECTS --ref REF --out REC` measures a recreation the way
+  the reference was measured: tight ink boxes for text, drawn rectangles for panels, mapped to
+  the reference frame by the scale rule and each element's anchor, so a docked Studio viewport of
+  any aspect compares correctly. Text background is sampled from the line box's ascent rows, and
+  solid bands (a strip under a highlighted option) are not counted as ink.
+- `studio_snippets.py ui-rects REF` generates the client snippet that dumps those rectangles. It
+  adds the top-bar inset back (`AbsolutePosition` leaves it out, even in an `IgnoreGuiInset`
+  ScreenGui: 58 px in Studio), works out each element's anchor from the Position scales, and places
+  each label's `TextBounds` by its alignment. A reference element can name a different Instance
+  with `"gui"`.
+- `ui_measure.py --compare` honors `"ignore": ["w"]` (any of x, y, w, h) per element in either file,
+  for labels whose words differ by design, and `--out` saves the report.
+- `fidelity_report.py` scores saved layout reports as `ui:<reference file>` (r = worst error /
+  tolerance; a missing element fails). UI-only remakes used to have nothing to score.
+- `remake_status.py`: reference UI boxes in `remake/ui/` count for phase 2, with advice for still
+  screenshots instead of "run motion_track"; layout reports count as comparison reports.
+- `breakdown_check.py` accepts tuple values such as `panel_box = 68, 205, 322, 660 ± 4 px`.
+- `references/ui-recreation.md` §6 is the new verify loop; §3 explains calibrating per-font cap
+  height and top ratios (Oswald 0.575 / 0.235, Garamond 0.543 / 0.222 measured in Studio).
+  `references/sharp-edges.md` adds four traps: `StreamingEnabled` in a place without a character,
+  the `AbsolutePosition` inset, `TextSize` versus cap height, and slopes other than 45 degrees.
+
 ## 1.2.3 — 2026-11-11
 
 From a full test of 1.2.2: a fresh clone on Windows, the installed plugin against a live Studio

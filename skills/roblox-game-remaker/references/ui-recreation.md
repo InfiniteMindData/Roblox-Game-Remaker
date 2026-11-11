@@ -98,6 +98,11 @@ original does elsewhere.
   reference resolution, `LineHeight`, and strokes or shadows (`UIStroke` on text, or a duplicated
   offset label for drop shadows).
 - Avoid `TextScaled` when matching exact sizes. Use fixed `TextSize` under `UIScale`.
+- Reference boxes are tight around the glyphs, but `TextSize` sets the line, not the capitals.
+  Place text with two per-font ratios, cap height and the gap from the label's top to the capitals,
+  both as fractions of `TextSize`, and calibrate them from one capture (§6). Measured in Studio:
+  Oswald 0.575 and 0.235, Garamond 0.543 and 0.222. A guessed ratio (0.70 for Oswald) left the
+  capitals 18% short.
 - Run all user-generated text through filtering (TextService); hand this to the `roblox-ui` and
   `roblox-networking` skills when relevant.
 
@@ -132,10 +137,25 @@ original does elsewhere.
 
 ## 6. Verify
 
-1. Capture the recreated screen at the reference resolution (Studio Device Simulator with a
-   custom 1920×1080 device, or a window of that size).
-2. `python scripts/visual_compare.py pair ref.png rec.png --out remake/diff/ui-hud --grid 16x9`.
-3. Check the box positions: use `ui_measure.py --compare ref-boxes.json rec-boxes.json`, which
-   reports per-element position and size error as a percentage of the screen.
-4. Repeat at the second aspect ratio to confirm the anchoring.
-5. Check every state and transition, not only the default frame.
+Layout first, measured the same way as the reference, at whatever size the Studio viewport has:
+
+1. `python scripts/studio_snippets.py ui-rects remake/ui/ref-boxes.json --gui MainMenu --out ui-rects.luau`,
+   then run it with `execute_luau` (Client, during play) and save the returned JSON as
+   `remake/ui/rects-NN.json`. It lists the screen rectangle of every GUI object named in the
+   reference boxes (an element's `"gui"` field maps a reference name to a different Instance
+   name), with the top-bar inset added back, each element's anchor, and where its text is drawn.
+2. `screen_capture` straight away, without changing the UI, and save it as `remake/captures/ui-NN.png`.
+3. `python scripts/ui_measure.py --from-capture remake/captures/ui-NN.png remake/ui/rects-NN.json --ref remake/ui/ref-boxes.json --out remake/ui/rec-NN.json`.
+   Text gets tight ink boxes; panels keep their drawn rectangles; both are mapped to the
+   reference frame by the scale rule and each element's anchor, so the capture's aspect does not
+   need to match. Over a busy background (text on the 3D scene), raise `--ink-threshold`.
+4. `python scripts/ui_measure.py --compare remake/ui/ref-boxes.json remake/ui/rec-NN.json --out remake/diff/ui-NN.json`.
+   When the words differ by design (an homage with original names, a translation), add
+   `"ignore": ["w"]` to those elements in the reference boxes: width cannot match, while x, y and
+   cap height still can.
+5. `python scripts/fidelity_report.py remake --diff-log --label "..."` scores the saved layout
+   report (`ui:<reference file>`, r = worst error / tolerance) with the shots, metrics and clips.
+6. Colors and grading: `visual_compare.py pair` on a capture at the reference aspect ratio (see
+   `studio-mcp.md`: captures are viewport-sized JPEGs).
+7. Check every state and transition, not only the default frame: log state changes from the UI
+   code and drive it with `user_keyboard_input`.

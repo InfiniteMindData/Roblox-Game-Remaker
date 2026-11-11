@@ -6,6 +6,8 @@ Collects the latest comparison results in a remake/ workspace:
             report.json files when there is no summary
   metrics   measure_compare on the newest harness log (remake/logs/*.log) against targets.json
   clips     every clip_compare JSON under remake/diff/ (newest per reference/recreation pair)
+  ui        every ui_measure --compare report saved with --out under remake/diff/ (newest per
+            reference boxes file): HUD and menu layout
 then appends one line to remake/history.jsonl and writes remake/scorecard.md.
 
 Every system gets a normalized error r, where r <= 1 passes:
@@ -13,6 +15,8 @@ Every system gets a normalized error r, where r <= 1 passes:
   shot threshold "at most T"          r = value / T                  (delta_e_mean)
   shot threshold "at least T"         r = (1 - value) / (1 - T)       (ssim, edge_iou)
   clip                                r = the largest of rms/tol_rms, max/tol_max, |offset|/tol_event
+  ui layout                           r = worst element error / tolerance (% of screen); a reference
+                                      element missing from the recreation fails
 Systems without a tolerance are listed as info.
 
 A regression is a system that passed in the previous history entry and fails now, or that still
@@ -167,6 +171,30 @@ def collect_clips(remake: Path, clip_files: list[Path]) -> tuple[dict, list[str]
     return out, [str(v[1]) for v in latest.values()]
 
 
+def collect_ui(remake: Path) -> tuple[dict, list[str]]:
+    latest: dict[str, tuple[float, Path, dict]] = {}
+    for p in (remake / "diff").rglob("*.json"):
+        data = load(p)
+        if not isinstance(data, dict) or data.get("tool") != "ui_measure" or data.get("mode") != "compare":
+            continue
+        # The same layout across iterations shares its reference boxes file.
+        key = Path(str(data.get("reference") or p.stem)).stem
+        mt = p.stat().st_mtime
+        if key not in latest or mt > latest[key][0]:
+            latest[key] = (mt, p, data)
+    out = {}
+    for key, (_, p, data) in sorted(latest.items()):
+        tol = data.get("tolerance_pct")
+        missing = data.get("missing") or []
+        r = (data.get("worst_pct", 0.0) / tol) if tol else None
+        worst = max(data.get("elements") or [{}], key=lambda e: e.get("max_pct", 0.0)).get("name")
+        status = "fail" if missing else ("info" if r is None else ("pass" if r <= 1 else "fail"))
+        out[f"ui:{key}"] = {"kind": "ui", "r": None if r is None else round(r, 4),
+                            "value": {"worst_pct": data.get("worst_pct"), "worst_element": worst, "missing": missing},
+                            "file": str(p), "status": status}
+    return out, [str(v[1]) for v in latest.values()]
+
+
 def previous_entry(history: Path) -> dict | None:
     if not history.is_file():
         return None
@@ -214,6 +242,11 @@ def render(entry: dict, regressions: list[str]) -> str:
         elif s["kind"] == "shot":
             v = s.get("values") or {}
             detail = s.get("detail") or ", ".join(f"{k} {v[k]}" for k in ("ssim", "delta_e_mean", "edge_iou") if v.get(k) is not None)
+        elif s["kind"] == "ui":
+            v = s.get("value") or {}
+            detail = f"worst {v.get('worst_pct')}% of screen ({v.get('worst_element')})"
+            if v.get("missing"):
+                detail += f"; missing: {', '.join(v['missing'])}"
         else:
             detail = s.get("detail") or f"rms {s['value']['rms']}, max {s['value']['max']}; {s.get('parts')}"
         ch = "" if s.get("change") is None else f"{s['change']:+.3f}"
@@ -268,16 +301,18 @@ def main() -> int:
     shots, s1 = collect_shots(args.remake, args.shots_summary)
     metrics, s2 = collect_metrics(args.remake, args.log)
     clips, s3 = collect_clips(args.remake, args.clip)
-    systems = {**shots, **metrics, **clips}
+    ui, s4 = collect_ui(args.remake)
+    systems = {**shots, **metrics, **clips, **ui}
     if not systems:
-        rc.fail("nothing to score: no visual_compare summary, harness log or clip_compare output in the workspace", rc.EXIT_FAIL)
+        rc.fail("nothing to score: no visual_compare summary, harness log, clip_compare output or saved "
+                "ui_measure --compare report (--out remake/diff/...) in the workspace", rc.EXIT_FAIL)
     history = args.remake / "history.jsonl"
     prev = previous_entry(history)
     regressions = compare(systems, prev, args.margin)
     counts = {k: sum(1 for s in systems.values() if s["status"] == k) for k in ("pass", "fail", "info", "missing")}
     entry = {"tool": TOOL, "schema": SCHEMA, "iteration": (prev or {}).get("iteration", 0) + 1,
              "time": _dt.datetime.now().isoformat(timespec="seconds"), "label": args.label or "",
-             "counts": counts, "regressions": regressions, "systems": systems, "sources": s1 + s2 + s3}
+             "counts": counts, "regressions": regressions, "systems": systems, "sources": s1 + s2 + s3 + s4}
     text = render(entry, regressions)
     if not args.dry_run:
         with open(history, "a", encoding="utf-8") as fh:

@@ -46,7 +46,9 @@ EV_TYPES = {"video", "screenshot", "capture", "doc", "patch-notes", "wiki", "com
 HEAD_RE = re.compile(r"^###\s+([A-Z]+)-(\d{3,})\s*[:\-—]\s*(.+?)\s*$")
 FIELD_RE = re.compile(r"^-\s*([a-z_]+)\s*:\s*(.*)$")
 NA_RE = re.compile(r"^-\s*n/a\s*:\s*([A-Z]+)\b(.*)$", re.IGNORECASE)
-VALUE_RE = re.compile(r"^\s*([A-Za-z_][\w.\-]*)\s*=\s*(-?[\d.]+(?:e-?\d+)?)\s*(?:±|\+/-|\+-)\s*([\d.]+(?:e-?\d+)?)\s*(\S.*)?$")
+# A value is one number, or a comma-separated tuple such as a UI box 'x, y, w, h', with one uncertainty.
+VALUE_RE = re.compile(r"^\s*([A-Za-z_][\w.\-]*)\s*=\s*(-?[\d.]+(?:e-?\d+)?(?:\s*,\s*-?[\d.]+(?:e-?\d+)?)*)\s*"
+                      r"(?:±|\+/-|\+-)\s*([\d.]+(?:e-?\d+)?)\s*(\S.*)?$")
 ID_RE = re.compile(r"\b(?:EV|MS)-\d{3,}\b")
 TBD = {"", "tbd", "todo", "?", "-"}
 
@@ -217,7 +219,7 @@ def check_entries(entries, na, ev, ms, path: Path, report: Report) -> dict:
             if not VALUE_RE.match(val):
                 level = "ERROR" if status == "MEASURED" else "WARNING"
                 report.add(level, path, vln, f"{eid}: value {val!r} is not 'name = number ± uncertainty unit'",
-                           "write values like 'apex_height = 7.4 ± 0.3 studs'")
+                           "write values like 'apex_height = 7.4 ± 0.3 studs' or 'panel_box = 68, 205, 322, 660 ± 4 px'")
         if status == "UNKNOWN":
             if not f.get("open") or f["open"].strip().lower() in TBD:
                 report.add("ERROR", path, ln, f"{eid}: UNKNOWN without an 'open:' question", "state the question and what would resolve it")

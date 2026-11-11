@@ -22,8 +22,19 @@ Modes:
   ui_measure.py boxes.json                 text table
   ui_measure.py boxes.json --json          machine-readable layout
   ui_measure.py boxes.json --luau          a Luau builder function for a ScreenGui
-  ui_measure.py --compare ref.json rec.json [--tolerance 1.0]
-      per-element position and size error as % of the screen; exit 1 if any exceeds tolerance
+  ui_measure.py --compare ref.json rec.json [--tolerance 1.0] [--out remake/diff/ui-it3.json]
+      per-element position and size error as % of the screen; exit 1 if any exceeds tolerance.
+      An element may list dimensions to leave out, in either file: "ignore": ["w"] for a label whose
+      words differ on purpose (an homage, a translation), "ignore": ["w", "h"] for a free-size panel.
+      --out saves the JSON report where fidelity_report.py scores it (any path under remake/diff/).
+  ui_measure.py --from-capture capture.png rects.json --ref ref.json --out rec.json
+      measure a recreation capture the way the reference was measured, and write a boxes JSON for
+      --compare. rects.json comes from `studio_snippets.py ui-rects` run in the playtest client:
+      screen rectangles of the GUI objects named in ref.json (with the top-bar inset added), and
+      where each label's text is drawn. Text elements get tight ink boxes (pixels that differ from
+      the label's background by more than --ink-threshold); other elements keep their drawn
+      rectangle. Boxes are mapped to the reference frame with the reference's scale rule and each
+      element's anchor, so a capture of any size or aspect compares correctly.
 """
 
 from __future__ import annotations
@@ -160,7 +171,20 @@ def to_luau(W, H, rule, items) -> str:
     return "\n".join(lines)
 
 
-def compare(ref_path: Path, rec_path: Path, tolerance: float, as_json: bool) -> int:
+DIMS = {"x": "dx_pct", "y": "dy_pct", "w": "dw_pct", "h": "dh_pct"}
+
+
+def ignored(*elements: dict) -> set[str]:
+    out: set[str] = set()
+    for el in elements:
+        for d in el.get("ignore") or []:
+            if d not in DIMS:
+                rc.fail(f"{el.get('name')}: 'ignore' may list x, y, w, h (got {d!r})")
+            out.add(d)
+    return out
+
+
+def compare(ref_path: Path, rec_path: Path, tolerance: float, as_json: bool, out: Path | None = None) -> int:
     W, H, _, ref = load_boxes(ref_path)
     W2, H2, _, rec = load_boxes(rec_path)
     rec_by = {e["name"]: e for e in rec}
@@ -177,21 +201,129 @@ def compare(ref_path: Path, rec_path: Path, tolerance: float, as_json: bool) -> 
             "dx_pct": round(100 * (x2 - x) / W, 3), "dy_pct": round(100 * (y2 - y) / H, 3),
             "dw_pct": round(100 * (w2 - w) / W, 3), "dh_pct": round(100 * (h2 - h) / H, 3),
         }
-        m = max(abs(v) for v in err.values())
+        skip = ignored(e, other)
+        judged = [abs(v) for d, v in ((d, err[DIMS[d]]) for d in DIMS) if d not in skip]
+        m = max(judged) if judged else 0.0
         worst = max(worst, m)
-        rows.append({"name": e["name"], **err, "max_pct": round(m, 3), "pass": m <= tolerance})
-    result = {"tool": TOOL, "mode": "compare", "tolerance_pct": tolerance, "elements": rows, "missing": missing,
+        rows.append({"name": e["name"], **err, "ignored": sorted(skip), "max_pct": round(m, 3), "pass": m <= tolerance})
+    result = {"tool": TOOL, "mode": "compare", "reference": str(ref_path), "recreation": str(rec_path),
+              "tolerance_pct": tolerance, "elements": rows, "missing": missing,
               "worst_pct": round(worst, 3), "pass": worst <= tolerance and not missing}
+    if out:
+        rc.write_json(out, result)
     if as_json:
         print(rc.dump_json(result))
     else:
         for r in rows:
-            print(f"{'ok  ' if r['pass'] else 'FAIL'} {r['name']:<24} dx {r['dx_pct']:+.2f}% dy {r['dy_pct']:+.2f}% "
-                  f"dw {r['dw_pct']:+.2f}% dh {r['dh_pct']:+.2f}%")
+            def cell(d: str) -> str:
+                v = r[DIMS[d]]
+                return f"d{d} {'  (ign)' if d in r['ignored'] else f'{v:+.2f}%'}"
+            print(f"{'ok  ' if r['pass'] else 'FAIL'} {r['name']:<24} " + " ".join(cell(d) for d in DIMS))
         for name in missing:
             print(f"MISSING {name} (not in the recreation boxes)")
         print(f"worst error {worst:.2f}% of screen (tolerance {tolerance}%) -> {'pass' if result['pass'] else 'FAIL'}")
+        if out:
+            print(f"wrote {out}")
     return rc.EXIT_OK if result["pass"] else rc.EXIT_FAIL
+
+
+def screen_scale(rule: str, W: int, H: int, cw: int, ch: int) -> float:
+    """UI scale factor of a cw x ch capture relative to the W x H reference, under the scale rule."""
+    if rule == "height":
+        return ch / H
+    if rule == "width":
+        return cw / W
+    if rule == "fit":
+        return min(cw / W, ch / H)
+    return 1.0
+
+
+def ink_box(img, rect: tuple[float, float, float, float], threshold: float):
+    """Tight box of the pixels in rect that differ from the label's background.
+
+    The background is sampled from the top rows of the drawn line box: a line's ascent space sits
+    above the capitals, so those rows hold no glyphs. (The median of the whole box fails when a
+    neighbor, such as a sub-menu strip, fills a large part of it.)
+    """
+    np = rc.require_numpy()
+    h_img, w_img = img.shape[:2]
+    x, y, w, h = rect
+    xa, ya = max(0, int(round(x))), max(0, int(round(y)))
+    xb, yb = min(w_img, int(x + w) + 1), min(h_img, int(y + h) + 1)
+    if xb - xa < 2 or yb - ya < 2:
+        return None
+    block = img[ya:yb, xa:xb]
+    top = block[: max(1, min(2, (yb - ya) // 4))].reshape(-1, 3)
+    bg = np.median(top, axis=0)
+    crop = block.reshape(-1, 3)
+    ink = (np.linalg.norm(crop - bg, axis=1) > threshold).reshape(yb - ya, xb - xa)
+    rows, cols = ink.sum(axis=1), ink.sum(axis=0)
+    # text never fills a whole row or column: a solid band is a neighbor (a strip, a frame edge)
+    ink[rows > 0.9 * (xb - xa), :] = False
+    ink[:, cols > 0.9 * (yb - ya)] = False
+    keep_r = np.nonzero(ink.sum(axis=1) >= 2)[0]
+    keep_c = np.nonzero(ink.sum(axis=0) >= 2)[0]
+    if len(keep_r) == 0 or len(keep_c) == 0:
+        return None
+    return (float(xa + keep_c.min()), float(ya + keep_r.min()),
+            float(keep_c.max() - keep_c.min() + 1), float(keep_r.max() - keep_r.min() + 1))
+
+
+def from_capture(capture: Path, rects_path: Path, ref_path: Path, out: Path, threshold: float) -> int:
+    Image = rc.require_pil()
+    np = rc.require_numpy()
+    W, H, rule, ref = load_boxes(ref_path)
+    data = rc.read_json(rects_path)
+    items = data.get("elements") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        rc.fail(f"{rects_path}: expected the JSON printed by studio_snippets.py ui-rects")
+    with Image.open(capture) as im:
+        img = np.asarray(im.convert("RGB")).astype(float)
+    ch, cw = img.shape[:2]
+    vp = data.get("viewport")
+    notes = []
+    if vp and (abs(vp[0] - cw) > 1 or abs(vp[1] - ch) > 1):
+        notes.append(f"capture is {cw}x{ch} but the viewport was {vp[0]}x{vp[1]}: rectangles rescaled")
+        kx, ky = cw / vp[0], ch / vp[1]
+    else:
+        kx = ky = 1.0
+    s = screen_scale(rule, W, H, cw, ch)
+    by_gui = {r.get("name"): r for r in items}
+    elements, missing = [], []
+    for e in ref:
+        r = by_gui.get(e.get("gui", e["name"]))
+        if not r:
+            missing.append(e["name"])
+            continue
+        ax, ay = r.get("anchor", [0, 0])
+        rect = (r["x"] * kx, r["y"] * ky, r["w"] * kx, r["h"] * ky)
+        method = "drawn rectangle"
+        if r.get("kind") == "text" and r.get("text"):
+            t_ = r["text"]
+            box = ink_box(img, (t_["x"] * kx, t_["y"] * ky, t_["w"] * kx, t_["h"] * ky), threshold)
+            if box:
+                rect, method = box, "ink pixels in the drawn text"
+            else:
+                notes.append(f"{e['name']}: no ink found in its text rectangle; using the drawn rectangle")
+        x, y, w, h = rect
+        bbox = [round(ax * W + (x - ax * cw) / s, 1), round(ay * H + (y - ay * ch) / s, 1), round(w / s, 1), round(h / s, 1)]
+        el = {"name": e["name"], "bbox": bbox, "method": method}
+        if e.get("ignore"):
+            el["ignore"] = e["ignore"]
+        elements.append(el)
+    if not elements:
+        rc.fail("none of the reference elements were found in the rects JSON (match names, or set 'gui' in ref.json)")
+    rc.write_json(out, {"tool": TOOL, "mode": "from-capture", "reference_resolution": [W, H], "scale_rule": rule,
+                        "capture": str(capture), "capture_size": [cw, ch], "scale": round(s, 6),
+                        "elements": elements, "missing": missing, "notes": notes})
+    for el in elements:
+        print(f"{el['name']:<24} {el['bbox']}  ({el['method']})")
+    for name in missing:
+        print(f"MISSING {name} (no GUI object with this name in {rects_path})")
+    for n in notes:
+        print(f"note: {n}")
+    print(f"wrote {out} ({len(elements)} elements, scale {s:.4f} from the '{rule}' rule)")
+    return rc.EXIT_OK if not missing else rc.EXIT_FAIL
 
 
 def main() -> int:
@@ -201,9 +333,22 @@ def main() -> int:
     ap.add_argument("--luau", action="store_true")
     ap.add_argument("--compare", nargs=2, type=Path, metavar=("REF", "REC"))
     ap.add_argument("--tolerance", type=float, default=1.0, help="compare tolerance in %% of screen (default 1.0)")
+    ap.add_argument("--from-capture", nargs=2, type=Path, metavar=("CAPTURE", "RECTS"),
+                    help="measure a recreation capture with the rects JSON from studio_snippets.py ui-rects")
+    ap.add_argument("--ref", type=Path, help="with --from-capture: the reference boxes JSON (names, scale rule)")
+    ap.add_argument("--out", type=Path, help="--from-capture: boxes JSON to write; --compare: save the report")
+    ap.add_argument("--ink-threshold", type=float, default=60.0,
+                    help="--from-capture: color distance from the label background that counts as text (default 60)")
     args = ap.parse_args()
+    if args.from_capture:
+        if not (args.ref and args.out):
+            rc.fail("--from-capture needs --ref REF.json and --out REC.json")
+        for pth in args.from_capture:
+            if not pth.is_file():
+                rc.fail(f"not found: {pth}")
+        return from_capture(args.from_capture[0], args.from_capture[1], args.ref, args.out, args.ink_threshold)
     if args.compare:
-        return compare(args.compare[0], args.compare[1], args.tolerance, args.json)
+        return compare(args.compare[0], args.compare[1], args.tolerance, args.json, args.out)
     if not args.boxes:
         rc.fail("give a boxes JSON file, or --compare REF REC")
     W, H, rule, elements = load_boxes(args.boxes)

@@ -51,6 +51,10 @@ delivery.
 | Light can't reach a far area | Light range is clamped to 120 studs | Emissive surfaces, more lights, fog |
 | HUD element under the Roblox top bar | `ScreenInsets` / core UI safe area | See `ui-recreation.md` §3 |
 | Text size differs across devices | `TextScaled` or mixed scale and offset | Offset sizes plus `UIScale` |
+| A menu or cutscene place shows only sky in play | `StreamingEnabled` (on by default in new places) streams parts around the character; with `CharacterAutoLoads` off there is none | Turn streaming off for menu places, or set `Player.ReplicationFocus` / `RequestStreamAroundAsync` to the scene |
+| Measured GUI positions are off by about 58 px vertically | `AbsolutePosition` is measured below the top bar, also in an `IgnoreGuiInset` ScreenGui | Add `GuiService:GetGuiInset()` (what `studio_snippets.py ui-rects` does) |
+| Text sits higher or smaller than the measured glyph box | `TextSize` sets the line height, not the capitals | Calibrate cap-height and top ratios per font from one capture (`ui-recreation.md` §3) |
+| A shape tapers at the wrong angle | Rotated squares only make 45-degree slopes | Cut a rectangle along its diagonal with a hard-stepped `UIGradient` transparency (`Rotation` 45 or -45) |
 
 ## Input, VR and haptics
 

@@ -195,6 +195,23 @@ code, and `get_console_output` keeps only recent output (a few seconds of a 60 H
 found the 1.2.2 `measure_compare` bugs: `attack..hit` paired whiffed jabs with a later hit, and a
 back-walk distorted `accel_t90` (138 frames instead of 0).
 
+## Checked in 1.3.0 (UI workflow, live in Roblox Studio)
+
+The full workflow ran on a menu remake from two screenshots (an homage: original names and art):
+intake, evidence (the YouTube video recorded as not downloaded), 11 measurements from `frame_zoom`
+and `palette_extract`, a breakdown passing `breakdown_check --strict` (one ASSUMED effect), a
+layout module from `ui_measure --luau`, the build in Studio, and two iterations:
+
+| Iteration | Result |
+|---|---|
+| 1 (guessed font ratios) | text cap height up to 0.9% of the screen short; everything else within 0.5% |
+| 2 (ratios calibrated from iteration 1's capture) | all 17 elements within 0.41% of the screen (tolerance 1.0%) |
+| 1.3.0 tools on the same capture (`ui-rects`, `--from-capture`, `--compare --out`) | same boxes as the hand-written extractor; worst 0.77% (the description line over the 3D scene is noisier); `fidelity_report` scores it `ui:ref-boxes` pass, r 0.769 |
+
+Behavior from the menu's own `REMAKE_MENU` log (Executed): title to menu on Return; W/S and the
+arrows move and wrap; the sub-row opens only on its option, shifting the options below by its
+height; A/D and the arrows move inside it; Return/J confirm; mouse hover and click work.
+
 ## Not measured yet
 
 - The skill evals in `evals/` (19 cases) have not been run with and

@@ -15,7 +15,7 @@ compatibility: >-
   ffmpeg and ffprobe. Optional: Roblox Studio (built-in MCP server), Rojo, Lune, StyLua, Selene,
   Blender 4.x. Web research needs network access.
 metadata:
-  version: "1.2.3"
+  version: "1.3.0"
   roblox-docs-snapshot: "Roblox/creator-docs 2026-11-03"
 ---
 
@@ -187,7 +187,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `frame_zoom.py frame.png --region x,y,w,h --mark x,y,w,h` | Zoomed crop with pixel rulers to read and confirm exact coordinates |
 | `pose_track.py frames/manifest.json --point hip=x,y ... --joint knee=hip,knee,foot --cycle foot.y` | Multi-point tracking: 2D joint angles, cycle period, keypose table draft |
 | `overlay.py blend\|diff\|checker\|wipe REF REC` / `overlay.py onion manifest.json` | Single-image alignment views; onion skin of a sequence |
-| `studio_snippets.py greybox\|shots\|apply-shot\|extract-log\|inputs` | Generate greybox and shot Luau for Studio/MCP; clean Output logs; binding tables from InputProbe |
+| `studio_snippets.py greybox\|shots\|apply-shot\|extract-log\|inputs\|ui-rects` | Generate greybox and shot Luau for Studio/MCP; clean Output logs; binding tables from InputProbe; dump live GUI rectangles for UI measurement |
 | `preset.py list\|show\|apply NAME --config Config.luau` | Genre starting values, written as `ASSUMED` and never over measured keys |
 | `breakdown_init.py PROJECT --game "Name"` | Create `remake/` from templates (never overwrites) |
 | `probe_video.py clip.mp4 --dupes` | FPS, variable frame rate, duplicate frames, effective update rate |
@@ -199,7 +199,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `fit_curve.py --track track.json --field x_px --luau` | Rank every template easing curve, a spring and an exponential approach against tracked samples; duration or spring parameters; says when fits are indistinguishable |
 | `visual_compare.py pair ref.png rec.png --out diff/` | SSIM, ΔE2000, Lab shifts, edge IoU, heatmap, grading hints |
 | `palette_extract.py frame.png --region x,y,w,h` | Dominant colors as hex and `Color3.fromRGB` |
-| `ui_measure.py boxes.json --luau` | Pixel boxes to UDim2 scale, AnchorPoint and aspect ratio |
+| `ui_measure.py boxes.json --luau` | Pixel boxes to UDim2 scale, AnchorPoint and aspect ratio; `--from-capture` measures the build's capture the same way; `--compare --out` saves a layout report that `fidelity_report` scores |
 | `event_stats.py events.csv --fps 60 --intervals spawn --rate drop/kill` | Event tables: intervals with spread, binomial rate intervals (never a bare %), state machines, progression curves, input response time |
 | `audio_onsets.py clip.mp4` | Sound onset times mapped to video frames |
 | `audio_compare.py analyze\|compare` | Duration, loudness envelope, dominant frequency and brightness of a sound; score an original or licensed replacement against it, with Roblox tuning hints |
