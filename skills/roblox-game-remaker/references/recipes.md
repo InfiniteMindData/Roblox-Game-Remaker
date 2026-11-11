@@ -40,7 +40,7 @@ python scripts/extract_frames.py clip.mp4 --out remake/frames/jump01 --mode rang
 python scripts/find_mover.py remake/frames/jump01/manifest.json --preview remake/sheets/jump01-movers.png
 python scripts/frame_zoom.py remake/frames/jump01/<first frame>.png --region <around the box> --mark <bbox> --out remake/sheets/jump01-check.png
 python scripts/motion_track.py remake/frames/jump01/manifest.json --bbox <bbox> --px-per-unit <px per stud> --analyze jump --out remake/tracks/jump01.json
-python scripts/ledger.py import-track remake remake/tracks/jump01.json --evidence EV-00N
+python scripts/ledger.py import remake remake/tracks/jump01.json --evidence EV-00N
 python scripts/remake_calc.py jump --apex <apex> --rise-time <rise> --fall-time <fall> --luau
 ```
 
@@ -71,7 +71,8 @@ Use `AccelerationTime` (linear model) in `Config.Movement`. Done when `ground_sp
 ## 5. Match camera FOV and follow
 
 1. Find the FOV convention (`roblox-translation.md` §2), then convert it:
-   `python scripts/remake_calc.py fov --horizontal 90 --aspect 16:9`.
+   `python scripts/remake_calc.py fov --horizontal 90 --aspect 16:9`. If the game does not state
+   it, solve it from a frame (recipe 13): `camera_solve.py vanishing` also gives pitch and height.
 2. Lag: track the character's screen position after a sudden start (`motion_track.py` without
    `--px-per-unit`), read the overshoot and settle time, then
    `python scripts/remake_calc.py spring --overshoot <frac> --settle-time <s> --luau`.
@@ -168,3 +169,28 @@ python scripts/remake_status.py remake --write
 
 Fill `remake/delivery-report.md` from these outputs, using the verification labels
 (`verification-loop.md` §6).
+
+## 13. Solve the camera and measure third-person footage
+
+For a camera that looks down at an angle, where one pixels-per-stud scale is wrong.
+
+```bash
+python scripts/extract_frames.py clip.mp4 --out remake/frames/cam01 --mode range --start <a> --end <b>
+python scripts/frame_zoom.py remake/frames/cam01/<first frame>.png --region <around a ground rectangle> --scale 4 --out remake/sheets/cam01-corners.png
+python scripts/camera_solve.py vanishing --image 1920x1080 --lines-x "<x1,y1,x2,y2;...>" --lines-z "<...>" \
+  --known-height <base_x,base_y,top_x,top_y,height> --luau --out remake/camera/cam01.json
+python scripts/find_mover.py remake/frames/cam01/manifest.json
+python scripts/motion_track.py remake/frames/cam01/manifest.json --bbox <whole body> --scale-search --out remake/tracks/cam01.json
+python scripts/camera_solve.py ground --image 1920x1080 --corners "<x,y;x,y;x,y;x,y>" --rect <W>x<D> \
+  --track remake/tracks/cam01.json --contact bottom --analyze speed --out remake/tracks/cam01-ground.json
+python scripts/ledger.py import remake remake/camera/cam01.json --evidence EV-00N
+python scripts/ledger.py import remake remake/tracks/cam01-ground.json --evidence EV-00N
+```
+
+Mark at least two long lines per ground direction (floor seams, wall bases, road edges) and a
+vertical object or a ground distance of known size for the height. Put `camera_vfov` and
+`camera_pitch` in `Config.Camera` (`FieldOfView`, `StartPitchDeg`) with their `MS` IDs. Done when
+the solved camera reproduces the reference shot within its stated uncertainty
+(`visual_compare.py` edge IoU), and `ground_speed` imports with no warnings. When `camera_solve`
+withholds measurements, fix the track first (`footage-analysis.md` §5a).
+

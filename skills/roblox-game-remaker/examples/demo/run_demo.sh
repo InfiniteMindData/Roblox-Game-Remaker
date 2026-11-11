@@ -27,6 +27,14 @@ echo "== run on a panning camera (truth: 20 studs/s, linear ramp 0.25 s, t90 0.2
 python3 "$S/motion_track.py" "$OUT/frames_run/manifest.json" --bbox 90,200,20,20 \
   --anchor-bbox 400,20,40,40 --search 40 --px-per-unit 20 --analyze speed --out "$OUT/track_run.json"
 
+echo "== third-person clip: camera and ground plane (truth: vFOV 60, pitch -35, height 9, 10 studs/s, t90 0.27 s)"
+python3 "$S/extract_frames.py" "$OUT/demo_perspective.mkv" --out "$OUT/frames_persp" --mode all --overwrite
+python3 "$S/camera_solve.py" vanishing --image 640x360 --lines-x "187,305,484,218;184,140,360,113" \
+  --lines-z "187,305,184,140;484,218,360,113" --known-ground 187,305,484,218,12
+python3 "$S/motion_track.py" "$OUT/frames_persp/manifest.json" --bbox 225,193,31,52 --scale-search --out "$OUT/track_persp.json"
+python3 "$S/camera_solve.py" ground --image 640x360 --corners "187,305;484,218;360,113;184,140" --rect 12x12 \
+  --track "$OUT/track_persp.json" --contact bottom --analyze speed --out "$OUT/ground_persp.json"
+
 echo "== convert to Roblox settings"
 python3 "$S/remake_calc.py" jump --apex 8.0 --rise-time 0.4 --fall-time 0.2828 --luau
 python3 "$S/remake_calc.py" accel --top-speed 20 --t90 0.225 --luau

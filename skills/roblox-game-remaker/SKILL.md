@@ -95,7 +95,9 @@ listed gap.*
 and [references/animation-analysis.md](references/animation-analysis.md). Probe the video first:
 duplicate frames change your timing precision. Extract frames, build contact sheets, find the
 subject with `find_mover.py`, confirm boxes with `frame_zoom.py --mark`, track with
-`motion_track.py`, and import results with `ledger.py import-track`. *Gate: `remake/measurements.json` and
+`motion_track.py`, and import results with `ledger.py import`. For third-person or angled
+footage, solve the camera and the ground plane with `camera_solve.py` instead of assuming a
+side-on scale. *Gate: `remake/measurements.json` and
 `remake/shots.json` exist, and each value has a method and an uncertainty.*
 
 **Phase 3: Breakdown.** Write `remake/breakdown.md` using
@@ -157,7 +159,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 |---|---|
 | `doctor.py` | Report available tools and the working mode |
 | `remake_status.py remake --write` | Phase gates, open items, next action; writes `remake/STATUS.md` |
-| `ledger.py add-evidence / add-measurement / import-track / targets` | Ledger entries with automatic IDs and checks; tracker output to measurements; targets |
+| `ledger.py add-evidence / add-measurement / import / targets` | Ledger entries with automatic IDs and checks; any tool's measurements into the ledger; targets |
 | `config_check.py remake` | Config.luau values against their measurements; stale, unsourced and assumed values |
 | `find_mover.py frames/manifest.json` | Detect moving subjects (camera motion cancelled); suggest `--bbox` and `--anchor-bbox` |
 | `frame_zoom.py frame.png --region x,y,w,h --mark x,y,w,h` | Zoomed crop with pixel rulers to read and confirm exact coordinates |
@@ -169,7 +171,8 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `probe_video.py clip.mp4 --dupes` | FPS, variable frame rate, duplicate frames, effective update rate |
 | `extract_frames.py clip.mp4 --out frames/ --mode range --start 120 --end 180` | Exact frames with index and timestamp manifest (`all`, `every`, `range`, `times`, `scene`) |
 | `contact_sheet.py frames/manifest.json --out sheet.png` | Labeled grid of frames to review a sequence in one image |
-| `motion_track.py frames/manifest.json --bbox x,y,w,h --px-per-unit 31.5 --analyze jump` | Track a feature; fit jump apex, gravity and speed |
+| `motion_track.py frames/manifest.json --bbox x,y,w,h --px-per-unit 31.5 --analyze jump` | Track a feature (`--scale-search` when it nears or recedes); fit jump apex, gravity and speed |
+| `camera_solve.py vanishing\|size\|ground` | FOV, pitch, roll and height from marked lines or a known object; ground-plane homography that turns third-person tracks into studs |
 | `remake_calc.py jump --apex 7.2 --rise-time 0.38` | Unit, FOV, jump, acceleration, spring and frame-time conversions, with `--luau` output |
 | `visual_compare.py pair ref.png rec.png --out diff/` | SSIM, ΔE2000, Lab shifts, edge IoU, heatmap, grading hints |
 | `palette_extract.py frame.png --region x,y,w,h` | Dominant colors as hex and `Color3.fromRGB` |

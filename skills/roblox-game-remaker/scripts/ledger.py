@@ -6,7 +6,10 @@ Assigns the next free ID, fills today's date, validates references, and writes a
 Subcommands:
   add-evidence REMAKE --type video --title "..." --source PATH_OR_URL [--inaccessible] ...
   add-measurement REMAKE --what "..." --evidence EV-003 --method "..." --value 8 --uncertainty 0.05 --unit studs
-  import-track REMAKE TRACK.json --evidence EV-003      motion_track output -> measurements
+  import REMAKE RESULT.json --evidence EV-003            tool output -> measurements: motion_track tracks,
+                                                        and any tool that writes a "measurements" list
+                                                        (camera_solve, fit_curve, event_stats, audio_compare)
+  import-track REMAKE TRACK.json --evidence EV-003      the same (kept for older recipes)
   targets REMAKE [--tier A] [--map metric=MS-001,...]   measurements -> targets.json for measure_compare
   list REMAKE                                           show both ledgers
 
@@ -37,7 +40,10 @@ import remake_common as rc  # noqa: E402
 TOOL = "ledger"
 EV_TYPES = ("video", "screenshot", "capture", "doc", "patch-notes", "wiki", "community-data", "talk", "forum",
             "user-statement", "measurement")
-TIME_METRICS = {"accel_t90", "decel_t10", "jump_rise_time", "jump_fall_time", "jump_airtime"}
+TIME_METRICS = {"accel_t90", "decel_t10", "jump_rise_time", "jump_fall_time", "jump_airtime", "input_latency"}
+# Config inputs that the in-game harness cannot observe: never written to targets.json.
+CONFIG_INPUTS = {"g_rise", "g_fall", "accel_ramp", "accel_tau"}
+CONFIG_INPUT_PREFIXES = ("camera_", "curve_", "event_", "rate_", "audio_")
 # Tier tolerances (roblox-translation.md section 9): timings in source frames, lengths/speeds in percent.
 TIERS = {"S": {"frames": 1, "pct": 3.0}, "A": {"frames": 2, "pct": 7.0}, "B": {"frames": None, "pct": 15.0}}
 
@@ -126,11 +132,41 @@ def cmd_add_measurement(args) -> int:
     return 0
 
 
-def cmd_import_track(args) -> int:
+def cmd_import(args) -> int:
     require_accessible_evidence(args.remake, [args.evidence])
-    track = rc.read_json(args.track)
-    if track.get("tool") != "motion_track":
-        rc.fail(f"{args.track} is not motion_track output")
+    data = rc.read_json(args.track)
+    if not isinstance(data, dict):
+        rc.fail(f"{args.track} is not tool output")
+    if data.get("tool") == "motion_track":
+        return import_motion_track(args, data)
+    rows = data.get("measurements")
+    if not isinstance(rows, list):
+        rc.fail(f"{args.track} has no 'measurements' list (tool {data.get('tool')!r}); nothing to import")
+    if not rows:
+        warn = "; ".join(data.get("warnings") or []) or "the tool produced no measurement"
+        rc.fail(f"{args.track} contains no measurements to import ({warn})", rc.EXIT_FAIL)
+    imported = 0
+    for m in rows:
+        missing = [k for k in ("metric", "what", "value", "unit", "method") if m.get(k) in (None, "")]
+        if missing:
+            rc.fail(f"{args.track}: a measurement lacks {', '.join(missing)}")
+        if m.get("uncertainty") is None:
+            print(f"skipped {m['metric']}: no uncertainty (the tool reported it as unstable)", file=sys.stderr)
+            continue
+        entry = {"what": m["what"], "metric": m["metric"], "evidence": [args.evidence],
+                 "method": f"{data.get('tool', 'tool')} {args.track.name}: {m['method']}",
+                 "value": m["value"], "uncertainty": m["uncertainty"], "unit": m["unit"]}
+        if m.get("frames"):
+            entry["frames"] = m["frames"]
+        mid = add_measurement(args.remake, entry)
+        imported += 1
+        print(f"{mid}  {m['metric']:<15} {m['value']} ± {m['uncertainty']} {m['unit']}")
+    if not imported:
+        rc.fail("no measurement had an uncertainty; nothing imported", rc.EXIT_FAIL)
+    return 0
+
+
+def import_motion_track(args, track: dict) -> int:
     unit = track.get("unit", "px")
     ppu = track.get("px_per_unit")
     base = f"motion_track {args.track.name}: bbox {track.get('bbox')}" + (f", {ppu} px/{unit}" if ppu else ", pixels")
@@ -201,7 +237,7 @@ def cmd_targets(args) -> int:
     metrics = data.setdefault("metrics", {})
     written = []
     for metric, mid in sorted(mapping.items()):
-        if metric in ("g_rise", "g_fall", "accel_ramp", "accel_tau"):
+        if metric in CONFIG_INPUTS or metric.startswith(CONFIG_INPUT_PREFIXES):
             continue  # inputs to Config, not observable by measure_compare
         existing = metrics.get(metric) or {}
         if existing.get("target") is not None and not args.replace:
@@ -266,11 +302,12 @@ def main() -> int:
     p.add_argument("--metric", help="measure_compare metric name, for targets")
     p.add_argument("--frames", help="first,last source frame")
     p.set_defaults(fn=cmd_add_measurement)
-    p = sub.add_parser("import-track")
-    p.add_argument("remake", type=Path)
-    p.add_argument("track", type=Path)
-    p.add_argument("--evidence", required=True)
-    p.set_defaults(fn=cmd_import_track)
+    for name in ("import", "import-track"):
+        p = sub.add_parser(name)
+        p.add_argument("remake", type=Path)
+        p.add_argument("track", type=Path, help="tool output JSON")
+        p.add_argument("--evidence", required=True)
+        p.set_defaults(fn=cmd_import)
     p = sub.add_parser("targets")
     p.add_argument("remake", type=Path)
     p.add_argument("--tier", choices=sorted(TIERS), default="A")

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0 — unreleased
+
+Measurement beyond side-on 2D footage.
+
+- `camera_solve.py`: vertical FOV, pitch, roll and camera height from vanishing lines or a known
+  object, and a ground-plane homography that converts third-person `motion_track` output to
+  studs. Every result carries a ±1 px sensitivity uncertainty.
+- `motion_track.py --scale-search`: follows subjects that move toward or away from the camera,
+  and warns when one `--px-per-unit` cannot describe the clip. A lost match is no longer
+  extrapolated off-screen (it used to crash with "search window is smaller than the template").
+- `ledger.py import`: imports any tool's `measurements` block (the new tools all write one);
+  camera and other Config inputs never become harness targets.
+- Demo footage: `demo_perspective.mkv`, a rendered third-person clip with known camera and speed;
+  `make_demo_footage.py --only` renders a subset.
+
 ## 1.1.0 — 2026-11-05
 
 Tools that make the agent's work more accurate and easier to resume.

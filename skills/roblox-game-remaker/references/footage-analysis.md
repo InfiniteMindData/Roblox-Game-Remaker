@@ -105,10 +105,36 @@ python scripts/motion_track.py remake/frames/jump01/manifest.json \
   fall gravities mean the original uses fall-gravity scaling (see `movement-camera-feel.md`).
 - `--analyze speed` fits steady-state ground speed and time to reach 90% of it.
 
-**Perspective caution.** Pixel tracking measures image-plane motion. It is only metric when the
-motion is roughly parallel to the image plane and the camera distance is constant. Prefer
-side-on test clips. For motion along the view axis, measure apparent size change, or use a
-top-down or orthographic shot. Record the setup in the measurement method.
+**Perspective caution.** Pixel tracking measures image-plane motion. One `--px-per-unit` is only
+metric when the motion is roughly parallel to the image plane at a constant camera distance.
+Prefer side-on test clips. For third-person or angled footage, convert through the ground plane
+instead (§5a). For motion along the view axis, track with `--scale-search`: the reported `scale`
+column is the apparent size, and `motion_track` warns when it changes enough to make one
+`--px-per-unit` wrong. Record the setup in the measurement method.
+
+### 5a. Third-person footage: the ground plane
+
+When the camera looks down at the ground at an angle, mark four corners of a ground rectangle
+whose size you know (a floor tile grid, a road marking, a court, a platform measured elsewhere),
+then convert the tracked feet to studs:
+
+```bash
+python scripts/motion_track.py remake/frames/run3d/manifest.json --bbox <whole body> --scale-search --out remake/tracks/run3d.json
+python scripts/camera_solve.py ground --image 1920x1080 --corners "x,y;x,y;x,y;x,y" --rect 12x12 \
+  --track remake/tracks/run3d.json --contact bottom --analyze speed --out remake/tracks/run3d-ground.json
+python scripts/ledger.py import remake remake/tracks/run3d-ground.json --evidence EV-00N
+```
+
+- Corners go in order around the rectangle: the origin, along the width, the far corner, along
+  the depth. Zoom with `frame_zoom.py` to place them; every corner pixel moves the result, and the
+  reported uncertainty is the effect of moving each corner coordinate by 1 px.
+- `--contact bottom` uses the bottom of the tracked box (scaled per frame by `--scale-search`) as
+  the ground contact. Use `--contact center` only for a feature that lies on the ground, such as
+  a shadow.
+- The homography needs a static camera. With a follow camera, measure each stretch where the
+  camera holds still, or re-mark the corners per shot.
+- If the source track has low-score samples, `camera_solve` withholds the measurements. Fix the
+  track (smaller box, `--scale-search`, a shorter range) instead of importing a wrong number.
 
 **Cross-check.** Speed = stride length × cadence. If the walk cycle is 30 frames at 60 fps and
 covers 2 strides of 1.4 m, then 2.8 m in 0.5 s = 5.6 m/s (20 studs/s). A large mismatch with the
@@ -117,12 +143,19 @@ tracked speed suggests foot sliding in the original, or a measurement error.
 ## 6. Camera analysis
 
 - **FOV.** If the game states FOV, record its convention (horizontal or vertical, and the aspect
-  it applies to). Otherwise estimate it from geometry: an object of known width W at distance D
-  spans p pixels of a frame P pixels wide, so `hfov = 2·atan((W/2)/D · P/p)`. Convert with
-  `remake_calc.py fov`.
-- **Follow distance and offset.** Measure where the character sits on screen (as a fraction of
-  width and height) while idle, and its size in pixels. Together with the FOV, this gives the
-  distance.
+  it applies to), and convert with `remake_calc.py fov`. Otherwise solve it from the footage with
+  `camera_solve.py`, which reports vertical FOV (Roblox's convention) with an uncertainty:
+  - `vanishing`: mark two or more lines along each of two perpendicular ground directions (floor
+    seams, wall bases, road edges; `--lines-x`, `--lines-z`), optionally vertical edges
+    (`--lines-y`). It also gives pitch and roll, and camera height with `--known-height` (a vertical
+    object of known height standing on the ground) or `--known-ground` (two ground points a known
+    distance apart). Long lines that converge strongly give the tightest result.
+  - `size`: an object of known size at a known depth: `--span x1,y1,x2,y2 --size 5 --distance 20`.
+  The solver assumes square pixels and a centered principal point: use uncropped frames.
+- **Follow distance and offset.** Solve the camera height and pitch first (above), then measure
+  where the character sits on screen (as a fraction of width and height) while idle. With FOV,
+  pitch and height known, the distance to the character's feet comes from the ground-plane ray
+  (`camera_solve.py ground --points`).
 - **Lag and damping.** From a sudden stop or start, track the character's screen position until
   it settles. The overshoot and settle time give spring parameters
   (`remake_calc.py spring --overshoot 0.08 --settle-time 0.35`).
@@ -161,7 +194,7 @@ and loudness relationships (loud versus quiet) qualitatively unless you calibrat
 Import tracker results directly (IDs, uncertainty and frame range are filled in):
 
 ```bash
-python scripts/ledger.py import-track remake remake/tracks/jump01.json --evidence EV-007
+python scripts/ledger.py import remake remake/tracks/jump01.json --evidence EV-007
 ```
 
 For other values use `ledger.py add-measurement`. The resulting entry looks like this:

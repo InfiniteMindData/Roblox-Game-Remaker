@@ -13,7 +13,9 @@ Analyses:
   none   positions only
 
 Perspective caution: pixel motion is only metric when the motion is roughly parallel to the
-image plane at a constant camera distance. Use side-on test clips.
+image plane at a constant camera distance. Use side-on test clips, or convert third-person
+tracks to world units with camera_solve.py ground. --scale-search follows a subject whose
+apparent size changes and warns when one --px-per-unit cannot describe the whole clip.
 
 Examples:
   python motion_track.py frames/jump/manifest.json --bbox 912,604,48,96 --px-per-unit 31.5 --unit studs --analyze jump --out tracks/jump.json
@@ -79,8 +81,19 @@ def _subpixel(m, y, x):
     return max(-0.5, min(0.5, dy)), max(-0.5, min(0.5, dx))
 
 
-def track(frames, bbox, search: int, downscale: int, predict: bool = True):
-    """Return [(cx, cy, score)] in full-resolution pixels for each frame."""
+def _resize(tmpl, w: int, h: int):
+    np = rc.require_numpy()
+    Image = rc.require_pil()
+    return np.asarray(Image.fromarray(tmpl.astype(np.float32), mode="F").resize((w, h), Image.BILINEAR), dtype=np.float32)
+
+
+def track(frames, bbox, search: int, downscale: int, predict: bool = True, scale_search: bool = False):
+    """Return [(cx, cy, score)] in full-resolution pixels for each frame.
+
+    With scale_search, each frame also tries the first-frame template at 4% smaller and larger
+    sizes than the previous match, and returns [(cx, cy, score, scale)]; use it when the subject
+    moves toward or away from the camera.
+    """
     np = rc.require_numpy()
     d = max(1, downscale)
     x, y, w, h = bbox
@@ -88,27 +101,47 @@ def track(frames, bbox, search: int, downscale: int, predict: bool = True):
     first = frames[0]
     if ys + hs > first.shape[0] or xs + ws > first.shape[1]:
         rc.fail(f"bbox {bbox} lies outside the first frame")
-    tmpl = first[ys:ys + hs, xs:xs + ws]
+    tmpl0 = first[ys:ys + hs, xs:xs + ws]
     r = max(2, search // d)
     out = []
     cx, cy = xs + ws / 2.0, ys + hs / 2.0
     prev = (cx, cy)
+    last_score = 1.0
+    scale = 1.0
+    cache: dict[tuple[int, int], object] = {(ws, hs): tmpl0}
     for i, img in enumerate(frames):
         if i == 0:
-            out.append((cx * d, cy * d, 1.0))
+            out.append((cx * d, cy * d, 1.0, 1.0) if scale_search else (cx * d, cy * d, 1.0))
             continue
-        px, py = (2 * cx - prev[0], 2 * cy - prev[1]) if predict and i > 1 else (cx, cy)
-        x0 = int(max(0, math.floor(px - ws / 2.0 - r)))
-        y0 = int(max(0, math.floor(py - hs / 2.0 - r)))
-        x1 = int(min(img.shape[1], math.ceil(px + ws / 2.0 + r)))
-        y1 = int(min(img.shape[0], math.ceil(py + hs / 2.0 + r)))
-        m = ncc_map(img[y0:y1, x0:x1], tmpl)
-        iy, ix = np.unravel_index(int(np.argmax(m)), m.shape)
-        sdy, sdx = _subpixel(m, iy, ix)
+        # Constant-velocity prediction, but not after a weak match (a jump to the wrong place
+        # would otherwise be extrapolated), and never outside the frame.
+        use_pred = predict and i > 1 and last_score >= 0.5
+        px, py = (2 * cx - prev[0], 2 * cy - prev[1]) if use_pred else (cx, cy)
+        best = None
+        for f in ((scale / 1.04, scale, scale * 1.04) if scale_search else (1.0,)):
+            tw, th = max(4, int(round(ws * f))), max(4, int(round(hs * f)))
+            if tw > img.shape[1] or th > img.shape[0]:
+                continue
+            if (tw, th) not in cache:
+                cache[(tw, th)] = _resize(tmpl0, tw, th)
+            tmpl = cache[(tw, th)]
+            qx = min(max(px, tw / 2.0), img.shape[1] - tw / 2.0)
+            qy = min(max(py, th / 2.0), img.shape[0] - th / 2.0)
+            x0 = int(max(0, math.floor(qx - tw / 2.0 - r)))
+            y0 = int(max(0, math.floor(qy - th / 2.0 - r)))
+            x1 = int(min(img.shape[1], math.ceil(qx + tw / 2.0 + r)))
+            y1 = int(min(img.shape[0], math.ceil(qy + th / 2.0 + r)))
+            m = ncc_map(img[y0:y1, x0:x1], tmpl)
+            iy, ix = np.unravel_index(int(np.argmax(m)), m.shape)
+            score = float(m[iy, ix])
+            if best is None or score > best[0]:
+                sdy, sdx = _subpixel(m, iy, ix)
+                best = (score, x0 + ix + sdx + tw / 2.0, y0 + iy + sdy + th / 2.0, f)
+        if best is None:
+            rc.fail("the template grew larger than the frame; disable --scale-search or use a smaller bbox", rc.EXIT_FAIL)
         prev = (cx, cy)
-        cx = x0 + ix + sdx + ws / 2.0
-        cy = y0 + iy + sdy + hs / 2.0
-        out.append((cx * d, cy * d, float(m[iy, ix])))
+        last_score, cx, cy, scale = best
+        out.append((cx * d, cy * d, last_score, scale) if scale_search else (cx * d, cy * d, last_score))
     return out
 
 
@@ -326,6 +359,8 @@ def main() -> int:
     ap.add_argument("--analyze", choices=["jump", "speed", "none"], default="none")
     ap.add_argument("--air-range", help="first,last sample indexes of the airborne segment (jump analysis override)")
     ap.add_argument("--min-score", type=float, default=0.6, help="warn when match scores fall below this (default 0.6)")
+    ap.add_argument("--scale-search", action="store_true",
+                    help="also track the subject's apparent size (subjects moving toward or away from the camera)")
     ap.add_argument("--out", type=Path, help="write JSON results here")
     ap.add_argument("--csv", type=Path, help="also write per-frame samples as CSV")
     args = ap.parse_args()
@@ -340,7 +375,7 @@ def main() -> int:
     times = [float(fr.get("pts_time", i / 60.0)) for i, fr in enumerate(frames_meta)]
     if len(images) < 3:
         rc.fail("need at least 3 frames")
-    pts = track(images, bbox, args.search, args.downscale)
+    pts = track(images, bbox, args.search, args.downscale, scale_search=args.scale_search)
     anchor = None
     if args.anchor_bbox:
         anchor = track(images, rc.parse_bbox(args.anchor_bbox, "--anchor-bbox"), args.search, args.downscale)
@@ -351,7 +386,8 @@ def main() -> int:
     x0, y0 = pts[0][0], pts[0][1]
     samples = []
     low = 0
-    for i, (fr, (x, y, sc)) in enumerate(zip(frames_meta, pts)):
+    for i, (fr, pt) in enumerate(zip(frames_meta, pts)):
+        x, y, sc = pt[:3]
         dx = dy = 0.0
         if anchor:
             dx, dy = anchor[i][0] - anchor[0][0], anchor[i][1] - anchor[0][1]
@@ -363,6 +399,8 @@ def main() -> int:
                         "x_px": round(x, 3), "y_px": round(y, 3), "score": round(sc, 4),
                         "u": round(u, 5), "v": round(v, 5),
                         "anchor_score": round(anchor[i][2], 4) if anchor else None})
+        if args.scale_search:
+            samples[-1]["scale"] = round(pt[3], 4)
 
     if len(times) > 1 and times[-1] > times[0]:
         fps = (len(times) - 1) / (times[-1] - times[0])
@@ -372,7 +410,16 @@ def main() -> int:
         "tool": TOOL, "schema": SCHEMA, "manifest": str(args.manifest), "bbox": list(bbox),
         "anchor_bbox": args.anchor_bbox, "px_per_unit": ppu, "unit": unit,
         "fps_from_samples": round(fps, 4), "low_score_samples": int(low), "samples": samples,
+        "warnings": [],
     }
+    if args.scale_search:
+        sc_all = [s["scale"] for s in samples]
+        span = max(sc_all) / min(sc_all)
+        result["scale_range"] = [round(min(sc_all), 4), round(max(sc_all), 4)]
+        if span > 1.08 and ppu:
+            result["warnings"].append(
+                f"the subject's apparent size changed {100 * (span - 1):.0f}% during the clip, so one --px-per-unit cannot be right "
+                "for every frame (perspective); convert positions with camera_solve.py ground instead")
     tt = [s["t"] for s in samples]
     if args.analyze == "jump":
         air = None
@@ -396,6 +443,8 @@ def main() -> int:
     if low:
         print("WARNING: low match scores - the feature changed appearance or left the search window; "
               "check the track or use a smaller, more rigid feature", file=sys.stderr)
+    for wmsg in result["warnings"]:
+        print(f"WARNING: {wmsg}", file=sys.stderr)
     for key in ("jump", "speed"):
         if key in result:
             for k, val in result[key].items():

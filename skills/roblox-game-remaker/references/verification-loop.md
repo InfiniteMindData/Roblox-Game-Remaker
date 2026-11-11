@@ -36,8 +36,11 @@ claim of "matches the original" points to a comparison artifact.
 }
 ```
 
-- Establish camera numbers for each shot by matching the reference: place the camera, compare,
-  and adjust until landmarks align (`visual_compare` edge IoU rises as alignment improves).
+- Establish camera numbers for each shot from the reference first: solve FOV, pitch and height
+  with `camera_solve.py vanishing` (or `size`), place the camera from those numbers, then refine
+  position and look-at until landmarks align (`visual_compare` edge IoU rises as alignment
+  improves). Record the solved values and their uncertainty in the shot's evidence; nudging
+  inside that uncertainty is fine, beyond it means a marked line was wrong.
 - `mask` is a black-and-white PNG where white marks pixels to **ignore** (HUD, particles, other
   players).
 - Batch run: `python scripts/visual_compare.py batch remake/shots.json --out remake/diff/` writes

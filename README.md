@@ -34,6 +34,7 @@ research → measure → document → translate → build → compare → fix
 | `extract_frames.py` | Exact frames with index and timestamp manifests (all, every, range, times, scene cuts) |
 | `contact_sheet.py` | Labeled frame grids, including reference/recreation pairs |
 | `motion_track.py` | Feature tracking with camera-pan compensation; jump fits (rise and fall gravity) and acceleration fits |
+| `camera_solve.py` | Vertical FOV, pitch and height from marked lines or a known object; ground-plane conversion of third-person tracks to studs |
 | `remake_calc.py` | Units, horizontal/vertical FOV, frames, jump solving, acceleration, spring parameters |
 | `visual_compare.py` | SSIM, CIEDE2000, Lab shifts, edge IoU, heatmaps, lighting hints, batch shot lists |
 | `palette_extract.py` | Dominant colors as `Color3.fromRGB` |
