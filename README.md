@@ -69,7 +69,7 @@ research → measure → document → translate → build → compare → fix
   the way real captures are) and a one-command pipeline run;
   walkthroughs for movement feel, HUD recreation and Quest 3; a complete sample workspace
   (breakdown plus measured `Config.luau`); and guardrail scenarios.
-- **Evals** (`evals/`): 19 test prompts with expected behavior and a pattern grader, for measuring
+- **Evals** (`evals/` at the repository root): 19 test prompts with expected behavior and a pattern grader, for measuring
   the skill with and without it, as the Agent Skills evaluation guide recommends.
 
 ## Install
@@ -153,9 +153,9 @@ skills/roblox-game-remaker/     the skill (copy this folder to install manually)
   assets/rojo-template/         Luau template, Lune tests, Studio smoke test, offline lint config
   assets/presets/               genre starting points (ASSUMED values)
   examples/                     demo footage generator, walkthroughs, sample workspace
-  evals/                        eval prompts and grader
   agents/openai.yaml            Codex UI metadata
 .claude-plugin/marketplace.json Claude Code plugin marketplace
+evals/                          eval prompts and grader (maintainers; not shipped with the skill)
 tools/                          repo validators (spec, Roblox API cross-check)
 tests/                          end-to-end and unit tests
 docs/                           installation, verification record

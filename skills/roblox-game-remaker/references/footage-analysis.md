@@ -159,8 +159,9 @@ HUDs all degrade tracking. The tools now report rather than hide this; read the 
 | `steady_speed_halves` disagree | Slow drift (compression, a changing anchor) | The uncertainty is widened to cover it; consider another anchor |
 | `scale_range` changes with `--px-per-unit` | Perspective | Use `camera_solve.py ground` (§5a) |
 
-What each case does to accuracy on the synthetic demo is recorded in `docs/VERIFICATION.md` of
-the skill's repository; a heavy H.264 encode (CRF 40 on a noisy background) destroys the
+What each case does to accuracy on the synthetic demo is recorded in
+[docs/VERIFICATION.md](https://github.com/InfiniteMindData/Roblox-Game-Remaker/blob/main/docs/VERIFICATION.md)
+(in the skill's repository, not shipped with the skill); a heavy H.264 encode (CRF 40 on a noisy background) destroys the
 background, and the tools then stop with an error instead of guessing.
 
 **Cross-check.** Speed = stride length × cadence. If the walk cycle is 30 frames at 60 fps and

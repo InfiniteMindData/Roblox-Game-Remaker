@@ -213,7 +213,7 @@ class PresetTests(unittest.TestCase):
 
 class EvalTests(unittest.TestCase):
     def test_evals_file_and_grader(self):
-        data = json.loads((SKILL / "evals" / "evals.json").read_text(encoding="utf-8"))
+        data = json.loads((ROOT / "evals" / "evals.json").read_text(encoding="utf-8"))
         self.assertEqual(data["skill_name"], "roblox-game-remaker")
         ids = [e["id"] for e in data["evals"]]
         self.assertEqual(len(ids), len(set(ids)))
@@ -224,7 +224,7 @@ class EvalTests(unittest.TestCase):
             good.write_text("I couldn't access that video, so I haven't analyzed it.", encoding="utf-8")
             bad = Path(tmp) / "bad.txt"
             bad.write_text("The apex is 8 studs.", encoding="utf-8")
-            grader = [sys.executable, str(SKILL / "evals" / "grade.py")]
+            grader = [sys.executable, str(ROOT / "evals" / "grade.py")]
             self.assertEqual(subprocess.run(grader + [str(good), "--eval", "2"], capture_output=True).returncode, 0)
             self.assertEqual(subprocess.run(grader + [str(bad), "--eval", "2"], capture_output=True).returncode, 1)
 

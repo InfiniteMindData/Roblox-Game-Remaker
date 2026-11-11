@@ -68,6 +68,8 @@ Checked in the engine API reference YAML of the creator-docs snapshot of 2026-11
 
 ## Automated checks (all passing at release)
 
+The table records the 1.2.0 release; later runs are in the 1.2.1–1.2.2 section below.
+
 | Check | Tool | Result |
 |---|---|---|
 | Agent Skills spec | `agentskills validate skills/roblox-game-remaker` | Valid skill |
@@ -158,16 +160,52 @@ failure before 1.2.0):
 Not exercised on degraded footage: `pose_track` (it shares the tracker but not the exclusion
 logic), `audio_onsets`, and `camera_solve` with compressed third-person footage.
 
+## Checked in 1.2.1–1.2.2 (Windows, and live in Roblox Studio)
+
+**Windows 11, Python 3.12** (Windows was not covered before 1.2.1):
+
+| Check | Result |
+|---|---|
+| `python -m unittest discover -s tests` | 122 tests pass, 4 skipped (StyLua and Selene not installed). Before the 1.2.1 fixes: 110 tests, 3 failures and 1 error, all from Windows code pages and symlink checkout |
+| `tools/validate_skill.py --strict --run-help`, `agentskills validate` | 0 errors, 0 warnings; valid skill |
+| Lune unit tests | 47 pass (adds `SimRecorder.spec`) |
+| Rojo build of the template | Builds |
+| `examples/demo/run_demo.sh` | Completes; it failed on its first line before 1.2.1 (`python3` is the Microsoft Store placeholder on Windows) |
+| `doctor.py` | Finds and starts a Blender installed as a `.cmd` launcher (it reported "version check failed" before) |
+
+StyLua and Selene did not run locally for 1.2.1–1.2.2; CI runs them. The CI runs for both commits
+were still queued on GitHub when this was written.
+
+**Live Roblox Studio through the built-in MCP server**, on a published fighting game with a
+deterministic 60 Hz simulation and no Humanoid. `SimRecorder` was called from the game's
+simulation step through a small adapter; the targets come from the game's own config and move
+data:
+
+| Measured | Result | Design value |
+|---|---|---|
+| Walk forward / backward (`ground_speed[walkF]`, `[walkB]`) | 9.0 / 7.0 studs/s | 9 / 7 |
+| Jump apex | 6.600 studs | 6.6 |
+| Jab startup / active / recovery, whiffed (`--interval`) | 7 / 2 / 11 frames, total 20, on every jab | first active frame 7, active 7–8, total 20 |
+| Jab that connected | contact on frame 7; total 25 (5 frames of hitstop pause the move's counter) | hitstop is real behavior, not a measurement error |
+| The game's own regression suite after the hooks were added | 106 checks, 0 failures | — |
+
+The same session confirmed the MCP behavior the references now describe: `screen_capture` returns
+a JPEG at the viewport size (1581x615 here), `user_keyboard_input` reaches the game's own input
+code, and `get_console_output` keeps only recent output (a few seconds of a 60 Hz log). It also
+found the 1.2.2 `measure_compare` bugs: `attack..hit` paired whiffed jabs with a later hit, and a
+back-walk distorted `accel_t90` (138 frames instead of 0).
+
 ## Not measured yet
 
-- The skill evals in `skills/roblox-game-remaker/evals/` (19 cases) have not been run with and
+- The skill evals in `evals/` (19 cases) have not been run with and
   without the skill. Run them before and after changing the instructions. `tests/test_evals.py`
   only checks that the cases, their inputs and their pattern checks are consistent.
 
 ## Not verified (needs Roblox Studio or hardware)
 
 These are written against the documented APIs but were not executed in Studio or on a device.
-Treat them as "Prepared, not run" until you run them.
+Treat them as "Prepared, not run" until you run them. (`SimRecorder` has run live; see above.
+The game it ran in has no Humanoid, so `MeasurementHarness` itself is still unverified.)
 
 - The client modules (MovementFeel, CameraRig, AnimationDriver, Haptics, VRSupport, ShotCamera,
   MeasurementHarness, InputProbe) and the server Bootstrap in a live Studio session.

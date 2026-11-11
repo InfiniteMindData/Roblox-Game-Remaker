@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+Repository housekeeping; the skill's behavior is unchanged.
+
+- `evals/` moved from the skill folder to the repository root. Everything under
+  `skills/roblox-game-remaker/` ships to users and is visible to the agent; the eval prompts and
+  grader are for maintainers.
+- `CLAUDE.md` keeps only the checks to run before committing; personal workflow rules go in an
+  uncommitted `CLAUDE.local.md`.
+- `docs/VERIFICATION.md` records the 1.2.1–1.2.2 runs: Windows, and a live Studio session on a
+  fighting game through `SimRecorder`. `references/footage-analysis.md` links to it by URL, since
+  the file is not part of the skill.
+
 ## 1.2.2 — 2026-11-11
 
 From wiring `SimRecorder` into a live fighting game and measuring a training session.

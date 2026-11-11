@@ -1,6 +1,6 @@
 {
   "skill_name": "roblox-game-remaker",
-  "setup": "python examples/demo/make_demo_footage.py --out evals/files/demo --only jump,run,perspective,hud,degraded,extras",
+  "setup": "python skills/roblox-game-remaker/examples/demo/make_demo_footage.py --out evals/files/demo --only jump,run,perspective,hud,degraded,extras",
   "evals": [
     {
       "id": 1,

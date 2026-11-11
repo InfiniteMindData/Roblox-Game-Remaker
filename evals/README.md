@@ -15,9 +15,12 @@ Test cases for measuring whether the skill helps, following the Agent Skills eva
 | 5, 6 | Resuming a workspace; Quest 3 APIs |
 | 9, 19 | Prompts that should not trigger the skill (DataStore, a generic Roblox scripting question) |
 
-1. Generate the input files with the `setup` command in `evals.json` (run from the skill
-   directory; the files are not committed):
-   `python examples/demo/make_demo_footage.py --out evals/files/demo --only jump,run,perspective,hud,degraded,extras`.
+These live at the repository root, outside the skill folder, so they do not ship with the skill.
+Run the commands below from the repository root.
+
+1. Generate the input files with the `setup` command in `evals.json` (the files are not
+   committed):
+   `python skills/roblox-game-remaker/examples/demo/make_demo_footage.py --out evals/files/demo --only jump,run,perspective,hud,degraded,extras`.
 2. For each case in `evals.json`, run the prompt twice in a fresh session: once with this skill
    installed and once without it (or with the previous version). Save each final reply as
    `<workspace>/iteration-N/eval-<name>/<with_skill|without_skill>/response.txt`, plus any files
