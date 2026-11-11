@@ -117,7 +117,7 @@ def collect_metrics(remake: Path, log: Path | None) -> tuple[dict, list[str]]:
     cmd = [sys.executable, str(HERE / "measure_compare.py"), str(log), "--json", "--allow-missing"]
     if targets.is_file():
         cmd += ["--targets", str(targets)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if proc.returncode not in (0, 1):
         return {}, [f"{log} (measure_compare failed: {proc.stderr.strip()[-200:]})"]
     data = json.loads(proc.stdout)

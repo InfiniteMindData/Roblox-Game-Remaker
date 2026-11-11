@@ -99,7 +99,7 @@ def evaluate(remake: Path, config: Path | None) -> dict:
     cfg = config or breakdown_check_config(remake)
     if cfg:
         proc = subprocess.run([sys.executable, str(HERE / "config_check.py"), str(remake), "--config", str(cfg), "--json"],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, encoding="utf-8", errors="replace")
         try:
             cfg_json = json.loads(proc.stdout)
             s = cfg_json["summary"]

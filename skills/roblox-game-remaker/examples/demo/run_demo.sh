@@ -55,7 +55,8 @@ echo "== convert to Roblox settings"
 echo "== UI layout and comparison (truth: health bar off by 12,5 px; recreation 18% darker)"
 "$PY" "$S/ui_measure.py" "$OUT/hud_boxes.json"
 "$PY" "$S/ui_measure.py" --compare "$OUT/hud_boxes.json" "$OUT/hud_boxes_rec.json" --tolerance 0.5 || true
-"$PY" "$S/visual_compare.py" pair "$OUT/demo_hud.png" "$OUT/demo_hud_rec.png" --out "$OUT/diff_hud" || true
+"$PY" "$S/visual_compare.py" pair "$OUT/demo_hud.png" "$OUT/demo_hud_rec.png" --out "$OUT/diff_hud" \
+  --fail-over-delta-e 2.0 --fail-under-ssim 0.98 || true
 "$PY" "$S/palette_extract.py" "$OUT/demo_hud.png" --region 52,984,300,28 --k 1
 
 echo "demo complete: outputs in $OUT"

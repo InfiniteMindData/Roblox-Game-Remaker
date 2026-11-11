@@ -99,18 +99,20 @@ function SimRecorder.new(opts: Options): SimRecorder
 		end
 	end
 	local scale = opts.scale or 1
-	local self = (setmetatable({
-		id = opts.id,
-		hz = opts.hz,
-		enabled = enabled,
-		scale = scale,
-		velScale = scale * (if opts.velocityPerTick then opts.hz else 1),
-		batchSize = math.max(1, opts.batch or 30),
-		batch = {},
-		emit = opts.emit or print,
-		encode = encode :: (any) -> string,
-		lastTick = nil,
-	}, SimRecorder) :: any) :: SimRecorder
+	local self = (
+		setmetatable({
+			id = opts.id,
+			hz = opts.hz,
+			enabled = enabled,
+			scale = scale,
+			velScale = scale * (if opts.velocityPerTick then opts.hz else 1),
+			batchSize = math.max(1, opts.batch or 30),
+			batch = {},
+			emit = opts.emit or print,
+			encode = encode :: (any) -> string,
+			lastTick = nil,
+		}, SimRecorder) :: any
+	) :: SimRecorder
 	if enabled then
 		self:_line({ k = "sim", id = opts.id, hz = opts.hz, grounded = opts.grounded or {} })
 	end

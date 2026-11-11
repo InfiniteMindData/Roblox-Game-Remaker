@@ -33,11 +33,19 @@ def fail(message: str, code: int = EXIT_USAGE) -> NoReturn:
 
 
 def safe_console() -> None:
-    """Never crash on a character the console cannot encode (Windows code pages lack some symbols)."""
+    """Write UTF-8 when output is piped, and never crash on an unencodable character.
+
+    On Windows a piped stdout defaults to the ANSI code page (cp1252), which Git Bash and agent
+    harnesses then read as UTF-8, so symbols such as the plus-minus sign arrive garbled. A real
+    console is left alone: Python already writes Unicode to it.
+    """
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(errors="replace")  # type: ignore[union-attr]
-        except (AttributeError, ValueError):
+            if stream.isatty():
+                stream.reconfigure(errors="replace")  # type: ignore[union-attr]
+            else:
+                stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError, OSError):
             pass
 
 

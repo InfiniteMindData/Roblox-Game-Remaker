@@ -1,8 +1,19 @@
 # Changelog
 
-## Unreleased
+## 1.2.3 — 2026-11-11
 
-Repository housekeeping; the skill's behavior is unchanged.
+From a full test of 1.2.2: a fresh clone on Windows, the installed plugin against a live Studio
+fight, and the first CI run of the Windows job (which passed).
+
+- `Remake/SimRecorder.luau` is formatted the way StyLua 2.6 wants; it failed the CI StyLua check
+  (the only failing job for 1.2.1 to 1.2.2).
+- Scripts write UTF-8 when their output is piped. On Windows a pipe defaulted to cp1252, which Git
+  Bash and agent harnesses read as UTF-8, so every `±` arrived as `�`. A real console is unchanged.
+  `fidelity_report.py` and `remake_status.py` decode their child tools' output as UTF-8 to match.
+- `run_demo.sh` gives the HUD comparison thresholds, so the demo now catches its planted 18%
+  darker recreation (FAIL: SSIM 0.971, delta E 5.4) instead of reporting `unchecked`.
+
+Repository housekeeping:
 
 - `evals/` moved from the skill folder to the repository root. Everything under
   `skills/roblox-game-remaker/` ships to users and is visible to the agent; the eval prompts and
