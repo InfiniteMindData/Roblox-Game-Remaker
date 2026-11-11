@@ -92,9 +92,28 @@ python scripts/clip_compare.py remake/tracks/jump01.json remake/logs/run-04.log 
   percent of the reference's travel and a number of frames), overridden per clip with `--clip ID`.
   The command exits 1 when one is exceeded.
 
-## 4. Iteration discipline (`remake/diff-log.md`)
+## 4. Iteration discipline (`remake/diff-log.md`, `remake/history.jsonl`)
 
-Per iteration, record:
+After each change, score the iteration:
+
+```bash
+python scripts/fidelity_report.py remake --diff-log --label "it7: ExposureCompensation 0.0 -> 0.35"
+```
+
+It collects the newest `visual_compare` summary, runs `measure_compare` on the newest harness log,
+and reads every `clip_compare` result, then:
+
+- gives each system (shot, metric, clip) `r`, its error as a fraction of the tolerance (`r <= 1`
+  passes), and the change since the previous iteration;
+- appends one JSON line to `remake/history.jsonl`, writes `remake/scorecard.md`, and with
+  `--diff-log` appends the iteration block below with the before and after numbers filled in;
+- exits 1 on a regression: something that passed before and fails now, or a failure that got
+  worse by more than `--margin`. Undo or fix the change before moving on.
+
+Give `clip_compare` a stable `--clip ID` per clip so the scorecard follows it across iterations.
+`remake_status.py` shows the latest scorecard and holds Phase 6 while a regression stands.
+
+Per iteration, record (the `--diff-log` block fills in before, after and status):
 
 ```markdown
 ## Iteration 7 — 2026-11-04 — SHOT-03, MOVE-002

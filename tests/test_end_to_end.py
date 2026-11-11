@@ -159,7 +159,10 @@ class EndToEndTests(unittest.TestCase):
             shutil.copy(remake / "media" / "demo_hud_rec.png", remake / "captures" / "SHOT-HUD.png")
             run("visual_compare.py", "batch", remake / "shots.json", "--out", remake / "diff", "--root", proj)
             self.assertEqual(self.phase(), 6)  # no iteration logged yet
-            (remake / "diff-log.md").write_text("## Iteration 1\n- change: measured values\n- after: jump and run pass; SHOT-HUD pass\n")
+            # Recipe 16: score the iteration; it writes history, the scorecard and the diff-log entry.
+            run("fidelity_report.py", remake, "--diff-log", "--label", "measured values in Config")
+            self.assertIn("- after: ", (remake / "diff-log.md").read_text())
+            self.assertIn("| metric:jump_apex | pass |", (remake / "scorecard.md").read_text())
             self.assertEqual(self.phase(), 7)
             report = (remake / "delivery-report.md").read_text().replace(
                 "|---|---|---|---|---|\n", "|---|---|---|---|---|\n| MOVE-002 | apex ±0.56 | 8.0 | pass | logs/run-01.log |\n", 1)

@@ -27,6 +27,11 @@ Measurement beyond side-on 2D footage.
   precision overstated on 30 fps content, the anchor's match score ignored, and `find_mover`
   offering a HUD panel as the subject. `motion_track` now reports `content_fps`, excluded
   samples and `reliable`; `ledger.py` refuses unreliable tracks.
+- `fidelity_report.py`: scores every shot, metric and clip against its tolerance as a fraction
+  `r` of it, appends the iteration to `remake/history.jsonl`, writes `remake/scorecard.md` and
+  (with `--diff-log`) the `diff-log.md` entry, and exits 1 on a regression. `remake_status.py`
+  shows the latest scorecard and holds Phase 6 while a regression stands; Phases 6 and 7 use it.
+  `clip_compare --clip ID` names a comparison so it can be followed across iterations.
 - `remake_common.line_plot`: Pillow line charts shared by the new tools.
 - `ledger.py import`: imports any tool's `measurements` block (the new tools all write one);
   camera and other Config inputs never become harness targets.

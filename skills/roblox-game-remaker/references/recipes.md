@@ -164,10 +164,11 @@ python scripts/breakdown_check.py remake --strict
 python scripts/config_check.py remake --strict
 python scripts/visual_compare.py batch remake/shots.json --out remake/diff
 python scripts/measure_compare.py remake/logs/<latest>.log --targets remake/targets.json
+python scripts/fidelity_report.py remake --label "delivery check"
 python scripts/remake_status.py remake --write
 ```
 
-Fill `remake/delivery-report.md` from these outputs, using the verification labels
+Fill `remake/delivery-report.md` from these outputs and `remake/scorecard.md`, using the verification labels
 (`verification-loop.md` §6).
 
 ## 13. Solve the camera and measure third-person footage
@@ -232,4 +233,19 @@ warnings: "NOT DISTINGUISHABLE" means the footage cannot tell the listed curves 
 them all in the breakdown entry's notes, pick by intent, and do not call the choice `MEASURED`
 beyond its duration. Done when the chosen curve's `TweenInfo` or `Spring` values sit in Config or
 the UI module with the `MS` ID.
+
+## 16. Score an iteration and catch regressions
+
+After every change in Phase 6 (one subsystem at a time):
+
+```bash
+python scripts/visual_compare.py batch remake/shots.json --out remake/diff/it08
+python scripts/clip_compare.py remake/tracks/jump01.json remake/logs/run-08.log --targets remake/targets.json --clip jump01 \
+  --out remake/diff/it08/clip-jump01.json --plot remake/diff/it08/clip-jump01.png
+python scripts/fidelity_report.py remake --diff-log --label "it8: FallGravityMultiplier 1.8 -> 2.0"
+```
+
+`fidelity_report` exits 1 on a regression and lists it in `remake/scorecard.md`; revert or fix the
+change before the next one. Done when the scorecard shows every judged system passing (or the
+user has accepted the listed gaps) and the last iteration has no regression.
 

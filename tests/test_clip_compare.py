@@ -112,7 +112,8 @@ class ClipCompareTests(unittest.TestCase):
         self.assertAlmostEqual(failed["tolerances"]["position_rms"], 0.08, delta=0.001)  # 1% of 8 studs of travel
         loose = self.compare(ref, rec, "--targets", self.dir / "targets.json", "--clip", "loose")
         self.assertEqual(loose["status"], "pass")
-        self.assertEqual(run("clip_compare.py", ref, rec, "--targets", self.dir / "targets.json", "--clip", "nope").returncode, 2)
+        unknown = self.compare(ref, rec, "--targets", self.dir / "targets.json", "--clip", "nope", code=1)
+        self.assertEqual(unknown["clip_id"], "nope")  # an id without its own entry uses the default tolerances
 
     def test_frame_alignment_and_ground_track(self):
         ref = write_track(self.dir / "ref.json", 60, 90, along=lambda t: ramp(t, 12, 0.3, 0.25))

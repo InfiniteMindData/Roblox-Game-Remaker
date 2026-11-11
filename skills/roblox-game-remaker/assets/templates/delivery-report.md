@@ -10,6 +10,11 @@
 | Entry | Accept test | Measured result | Status (pass / gap / limit / not started) | Evidence |
 |---|---|---|---|---|
 
+## Fidelity scorecard
+
+Paste the latest `remake/scorecard.md` summary (iteration, pass/fail counts) and link it. List any
+system that is not passing in the gaps above.
+
 ## Visual comparison summary
 
 | Shot | SSIM | ΔE mean | Edge IoU | Status |

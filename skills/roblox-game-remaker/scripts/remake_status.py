@@ -116,9 +116,19 @@ def evaluate(remake: Path, config: Path | None) -> dict:
     logs = list((remake / "logs").glob("*.log"))
     diff_log = read(remake / "diff-log.md")
     filled = [m for m in re.findall(r"^- after:[ \t]*(\S.*)$", diff_log, re.M)]
-    gates.append(gate(bool(filled) and (bool(reports) or bool(logs)),
-                      f"{len(filled)} logged iterations, {len(reports)} comparison reports, {len(logs)} harness logs",
-                      "Capture shots and harness logs, run visual_compare.py / measure_compare.py, log the iteration in diff-log.md.",
+    scored = [json.loads(ln) for ln in read(remake / "history.jsonl").splitlines() if ln.strip().startswith("{")]
+    latest = scored[-1] if scored else None
+    detail = f"{len(filled)} logged iterations, {len(reports)} comparison reports, {len(logs)} harness logs"
+    if latest:
+        c = latest.get("counts", {})
+        detail += (f"; scorecard iteration {latest.get('iteration')}: {c.get('pass', 0)} pass, {c.get('fail', 0)} fail, "
+                   f"{len(latest.get('regressions') or [])} regressions")
+    regressed = bool(latest and latest.get("regressions"))
+    gates.append(gate(bool(filled) and (bool(reports) or bool(logs)) and not regressed, detail,
+                      ("Fix the regressions in remake/scorecard.md first (the last change made them), then re-run "
+                       "fidelity_report.py remake --diff-log." if regressed else
+                       "Capture shots and harness logs, run visual_compare.py / measure_compare.py / clip_compare.py, then "
+                       "score the iteration with fidelity_report.py remake --diff-log --label \"<what changed>\"."),
                       partial=bool(reports) or bool(logs)))
 
     delivery = section(read(remake / "delivery-report.md"), "Results by breakdown entry")
@@ -138,6 +148,9 @@ def evaluate(remake: Path, config: Path | None) -> dict:
         "config_assumptions": (cfg_json or {}).get("summary", {}).get("assumptions", []),
         "inaccessible_sources": [f"{e.get('id')} {e.get('title', '')}" for e in blocked],
         "by_status": summ.get("by_status", {}),
+        "scorecard": {"iteration": latest.get("iteration"), "counts": latest.get("counts"), "label": latest.get("label"),
+                      "regressions": latest.get("regressions") or [],
+                      "failing": sorted(k for k, v in latest.get("systems", {}).items() if v.get("status") == "fail")} if latest else None,
     }
 
 
@@ -156,6 +169,15 @@ def render(st: dict) -> str:
         lines.append(f"| {g['phase']} | {mark} | {g['detail']} |")
     lines += ["", f"**Current phase:** {st['gates'][st['current_phase']]['phase'] if st['current_phase'] < len(st['gates']) else 'done'}",
               f"**Next action:** {st['next_action']}", ""]
+    sc = st.get("scorecard")
+    if sc:
+        c = sc["counts"] or {}
+        lines.append(f"## Latest scorecard (iteration {sc['iteration']}{': ' + sc['label'] if sc.get('label') else ''})")
+        lines.append(f"{c.get('pass', 0)} pass, {c.get('fail', 0)} fail, {c.get('info', 0)} info, {c.get('missing', 0)} missing. "
+                     "Details: `remake/scorecard.md`; history: `remake/history.jsonl`.")
+        lines += [f"- REGRESSION: {r}" for r in sc["regressions"]]
+        lines += [f"- failing: {f}" for f in sc["failing"]]
+        lines.append("")
     if st["open_questions"]:
         lines.append("## Open questions")
         lines += [f"- {q['id']}: {q['question']}" for q in st["open_questions"]]

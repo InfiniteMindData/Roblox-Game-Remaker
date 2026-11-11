@@ -47,6 +47,7 @@ research → measure → document → translate → build → compare → fix
 | `blender_roblox_export.py` | Check Roblox mesh and rig limits in Blender, then export |
 | `doctor.py` | Report which tools are available |
 | `remake_status.py` | Phase gates, open items, next action; writes `STATUS.md` |
+| `fidelity_report.py` | Score every shot, metric and clip against tolerance each iteration; history, scorecard, diff-log entry; exit 1 on a regression |
 | `ledger.py` | Evidence and measurements with automatic IDs; tracker import; targets |
 | `config_check.py` | `Config.luau` values against their measurements (drift, missing sources, assumptions) |
 | `find_mover.py` / `frame_zoom.py` | Detect moving subjects and suggest tracking boxes; zoomed crops with pixel rulers |

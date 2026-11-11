@@ -263,9 +263,7 @@ def tolerances(args, ref_travel: float) -> dict:
         data = rc.read_json(args.targets)
         clips = data.get("clips", {}) if isinstance(data, dict) else {}
         spec.update(clips.get("default") or {})
-        if args.clip:
-            if args.clip not in clips:
-                rc.fail(f"--clip {args.clip}: no such entry in {args.targets} 'clips'")
+        if args.clip and args.clip in clips:
             spec.update(clips[args.clip])
     for key in ("position_rms", "position_max", "event_offset_s"):
         val = getattr(args, f"tol_{key.replace('position_', '')}" if key != "event_offset_s" else "tol_event")
@@ -372,7 +370,7 @@ def compare(ref: Clip, rec: Clip, args) -> dict:
         warnings.append(f"the rms error ({rms:.4g}) is below the frame-quantization floor ({floor:.4g}): the clips match "
                         "as closely as these frame rates can show")
     return {
-        "tool": TOOL, "schema": SCHEMA,
+        "tool": TOOL, "schema": SCHEMA, "clip_id": args.clip,
         "reference": {"source": ref.source, "kind": ref.kind, "fps": round(1 / ref.dt, 3), "align_time_s": round(ta_ref, 4)},
         "recreation": {"source": rec.source, "kind": rec.kind, "fps": round(1 / rec.dt, 3), "align_time_s": round(ta_rec, 4)},
         "unit": ref.unit, "alignment": how, "axes": axes, "window_s": [round(float(t0), 4), round(float(t1), 4)],
@@ -413,7 +411,8 @@ def main() -> int:
     ap.add_argument("--rate", type=float, help="resampling rate in Hz (default: the finer clip's frame rate)")
     ap.add_argument("--motion-threshold", type=float, default=0.02, help="fraction of the travel that counts as moving (default 0.02)")
     ap.add_argument("--targets", type=Path, help="targets.json with a 'clips' block")
-    ap.add_argument("--clip", help="entry in targets.json 'clips' to use (merged over 'default')")
+    ap.add_argument("--clip", help="clip id: names this comparison for fidelity_report, and selects targets.json "
+                    "'clips' tolerances (merged over 'default') when an entry exists")
     ap.add_argument("--tol-rms", type=float, help="position rms tolerance (clips' unit)")
     ap.add_argument("--tol-max", type=float, help="position max tolerance (clips' unit)")
     ap.add_argument("--tol-event", type=float, help="event time offset tolerance (s)")
