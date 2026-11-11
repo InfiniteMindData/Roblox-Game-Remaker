@@ -5,6 +5,8 @@ LOG is a copy of the Studio Output (or MCP get_console_output) that contains har
   REMAKE_MEASURE {"k":"b","s":[[t,x,y,z,vx,vy,vz,state,mv], ...]}   batched samples
   REMAKE_MEASURE {"k":"s","t":..,"p":[x,y,z],"v":[vx,vy,vz],"st":"Running","mv":1}  single sample
   REMAKE_MEASURE {"k":"e","t":..,"n":"jump"}   events: jump, land, move_start, move_stop
+  REMAKE_MEASURE {"k":"l","t":..,"in":"Space","f":2,"fd":0.0167,"dt":0.025}   input latency
+                 (DevTools.MeasureLatency): rendered frames from a press to the first visible change
 Other text on the line (timestamps, script names) is ignored.
 
 Derived metrics:
@@ -16,6 +18,10 @@ Derived metrics:
   jump_fall_time   apex to landing
   jump_airtime     takeoff to landing
   fall_speed_max   largest downward speed
+  input_latency    seconds from a press to the first rendered frame that shows a change
+                   (frames x frame duration, per press); --latency-key limits it to one key.
+                   input_latency_frames gives the same in the build's frames (info only).
+                   Presses with no change before the timeout are counted, not averaged.
 
 TARGETS (JSON): {"metrics": {"jump_apex": {"target": 7.4, "tolerance": 0.3},
                              "ground_speed": {"target": 20, "tolerance_pct": 3}}}
@@ -48,7 +54,7 @@ STATE_CODES = {0: "Unknown", 1: "Running", 2: "Jumping", 3: "Freefall", 4: "Land
 GROUNDED = {"Running", "RunningNoPhysics", "Landed"}
 
 
-def parse_log(path: Path, tag: str):
+def parse_log(path: Path, tag: str, latency: list | None = None):
     samples, events = [], []
     decoder = json.JSONDecoder()
     bad = 0
@@ -80,6 +86,9 @@ def parse_log(path: Path, tag: str):
             samples.append({"t": obj["t"], "p": tuple(obj["p"]), "v": tuple(obj["v"]), "st": obj.get("st", "Unknown"), "mv": obj.get("mv", 0)})
         elif kind == "e":
             events.append({"t": obj["t"], "n": obj.get("n", "")})
+        elif kind == "l" and latency is not None:
+            latency.append({"t": obj.get("t"), "key": obj.get("in", ""), "f": obj.get("f", -1), "fd": obj.get("fd"),
+                            "dt": obj.get("dt")})
     samples.sort(key=lambda s: s["t"])
     events.sort(key=lambda e: e["t"])
     return samples, events, bad
@@ -89,9 +98,17 @@ def hspeed(s) -> float:
     return math.hypot(s["v"][0], s["v"][2])
 
 
-def derive(samples, events) -> dict:
+def derive(samples, events, latency=None, latency_key=None) -> dict:
     out: dict[str, list[float]] = {k: [] for k in (
-        "ground_speed", "accel_t90", "decel_t10", "jump_apex", "jump_rise_time", "jump_fall_time", "jump_airtime", "fall_speed_max")}
+        "ground_speed", "accel_t90", "decel_t10", "jump_apex", "jump_rise_time", "jump_fall_time", "jump_airtime", "fall_speed_max",
+        "input_latency", "input_latency_frames")}
+    for lat in latency or []:
+        if latency_key and lat["key"] != latency_key:
+            continue
+        if lat["f"] is not None and lat["f"] >= 0:
+            fd = lat["fd"] if lat.get("fd") else 1 / 60
+            out["input_latency"].append(lat["f"] * fd)
+            out["input_latency_frames"].append(float(lat["f"]))
     if not samples:
         return out
     starts = [e["t"] for e in events if e["n"] == "move_start"]
@@ -178,27 +195,33 @@ def main() -> int:
     ap.add_argument("--targets", type=Path, help="targets JSON (remake/targets.json)")
     ap.add_argument("--tag", default=TAG)
     ap.add_argument("--allow-missing", action="store_true", help="do not fail when a targeted metric was not observed")
+    ap.add_argument("--latency-key", help="only time presses of this KeyCode name (for example Space)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
-    samples, events, bad = parse_log(args.log, args.tag)
-    if not samples and not events:
+    latency: list = []
+    samples, events, bad = parse_log(args.log, args.tag, latency)
+    if not samples and not events and not latency:
         rc.fail(f"no {args.tag} lines found in {args.log}; enable the MeasurementHarness and copy the full Output", rc.EXIT_FAIL)
     targets = {}
     if args.targets:
         data = rc.read_json(args.targets)
         targets = data.get("metrics", {}) if isinstance(data, dict) else {}
-    derived = derive(samples, events)
+    derived = derive(samples, events, latency, args.latency_key)
     results = {name: judge(vals, targets.get(name)) for name, vals in derived.items()}
     failed = [n for n, r in results.items() if r["status"] == "fail"]
     missing = [n for n, r in results.items() if r["status"] == "not-observed" and targets.get(n, {}).get("target") is not None]
     ok = not failed and (args.allow_missing or not missing)
+    timeouts = sum(1 for lat in latency if (lat["f"] is None or lat["f"] < 0) and (not args.latency_key or lat["key"] == args.latency_key))
     report = {"tool": TOOL, "log": str(args.log), "samples": len(samples), "events": len(events), "unparsed_lines": bad,
+              "latency_presses": len(latency), "latency_timeouts": timeouts,
               "metrics": results, "failed": failed, "missing": missing, "pass": ok}
     if args.json:
         print(json.dumps(report, indent=2))
     else:
         print(f"{len(samples)} samples, {len(events)} events from {args.log}" + (f" ({bad} unparsed lines)" if bad else ""))
+        if latency:
+            print(f"{len(latency)} timed presses" + (f", {timeouts} with no visible change before the timeout" if timeouts else ""))
         for name, r in results.items():
             if r["status"] in ("pass", "fail"):
                 print(f"{r['status'].upper():<5} {name:<15} {r['mean']} (n={r['n']}, std {r['std']}) target {r['target']} ± {r['tolerance']}  error {r['error']:+}")

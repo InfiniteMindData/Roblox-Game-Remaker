@@ -124,7 +124,12 @@ These are written against the documented APIs but were not executed in Studio or
 Treat them as "Prepared, not run" until you run them.
 
 - The client modules (MovementFeel, CameraRig, AnimationDriver, Haptics, VRSupport, ShotCamera,
-  MeasurementHarness, InputProbe) and the server Bootstrap in a live Studio session. The template
+  MeasurementHarness, InputProbe) and the server Bootstrap in a live Studio session.
+- The MeasurementHarness input-latency mode added in 1.2.0 (`DevTools.MeasureLatency`). Its API
+  names pass the creator-docs cross-check (`RunService.PreRender`, `UserInputService.InputBegan`,
+  `Humanoid:GetState`), and `measure_compare` parses its log lines in tests, but StyLua, Selene,
+  Lune and Rojo were not run on this change (the build environment could not run them), and the
+  frame counts it produces have not been compared with a known latency in Studio. The template
   includes `tests/studio/SmokeTest.luau` for this.
 - MovementFeel's override order relative to the default ControlModule (it binds right after
   `Enum.RenderPriority.Input`). Projects using the Input Action System rollout or a custom

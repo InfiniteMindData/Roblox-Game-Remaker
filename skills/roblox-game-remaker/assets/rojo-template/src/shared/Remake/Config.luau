@@ -137,6 +137,9 @@ Config.VR = {
 Config.DevTools = {
 	Measure = false, -- MeasurementHarness logging (Studio only); also enabled by Workspace attribute RemakeMeasure
 	MeasureBatch = 30, -- samples per log line
+	MeasureLatency = false, -- also time input -> first visible change ("k":"l" lines); attribute RemakeMeasureLatency
+	LatencyKeys = { "Space", "ButtonA", "W", "A", "S", "D" }, -- KeyCode names to time
+	LatencyTimeout = 1, -- s without a visible change before a press is logged as f = -1
 	InputProbe = false, -- InputProbe logging (Studio, or a private test place on device)
 	ShotHotkeys = true, -- ShotCamera F-key cycling in Studio
 }

@@ -23,6 +23,11 @@ Analyses (combine freely; with none given, every event type with 3 or more rows 
                          transition counts and dwell time per state
   --series EVENT:col     fit col against occurrence number (level 1, 2, ...) with linear,
                          quadratic, exponential and power curves (progression and economy)
+  --latency INPUT/RESP   input response time: each INPUT row (the frame an input overlay or a
+                         filmed controller shows the press) paired with the first RESP row after
+                         it (the first frame that shows the response); mean with an interval and
+                         ±1 frame quantization, as metric input_latency for measure_compare.
+                         Without a visible input this cannot be measured: leave it ASSUMED.
 
 Every result carries its sample size, a method, and an uncertainty; small samples are flagged.
 
@@ -306,6 +311,46 @@ def state_stats(rows, states: list[str] | None, column: str | None, by: str | No
     return {"states": names, "transitions": out_tr, "dwell": out_dw, "notes": notes}
 
 
+def latency_stats(rows, spec: str, by: str | None, frame_s: float, conf: float) -> dict:
+    m = re.match(r"^([\w.-]+)/([\w.-]+)$", spec)
+    if not m:
+        rc.fail(f"--latency {spec!r}: use INPUT/RESPONSE, for example press/move")
+    inp, resp = m.groups()
+    delays, unanswered = [], 0
+    groups: dict[str, list[dict]] = {}
+    for r in rows:
+        if r["event"] in (inp, resp):
+            groups.setdefault(r.get(by, "") if by else "", []).append(r)
+    for items in groups.values():
+        for i, r in enumerate(items):
+            if r["event"] != inp:
+                continue
+            nxt = next((x for x in items[i + 1:] if x["event"] in (inp, resp)), None)
+            if nxt is None or nxt["event"] == inp:
+                unanswered += 1
+            else:
+                delays.append(nxt["_t"] - r["_t"])
+    n = len(delays)
+    res = {"input": inp, "response": resp, "pairs": n, "unanswered": unanswered}
+    if n == 0:
+        rc.fail(f"--latency {spec}: no {inp} row is followed by a {resp} row", rc.EXIT_FAIL)
+    mean = sum(delays) / n
+    sd = math.sqrt(sum((d - mean) ** 2 for d in delays) / (n - 1)) if n > 1 else 0.0
+    half = t_ppf(1 - (1 - conf) / 2, n - 1) * sd / math.sqrt(n) if n > 1 else 0.0
+    unc = math.hypot(half, frame_s) if n > 1 else frame_s  # quantization does not average away: both ends are frames
+    res.update({"mean_s": round(mean, 5), "sd_s": round(sd, 5), "min_s": round(min(delays), 5), "max_s": round(max(delays), 5),
+                "mean_frames": round(mean / frame_s, 2) if frame_s else None, "uncertainty_s": round(unc, 5)})
+    notes = []
+    if n < 5:
+        notes.append(f"only {n} presses: log at least 5 (10 for the spread)")
+    if unanswered:
+        notes.append(f"{unanswered} presses had no response before the next press: check the log, or the input did nothing")
+    if frame_s and sd > 2 * frame_s:
+        notes.append("the delay varies by more than two frames: the game may poll input at a lower rate, or buffer it")
+    res["notes"] = notes
+    return res
+
+
 def series_stats(rows, spec: str) -> dict:
     np = rc.require_numpy()
     if ":" not in spec:
@@ -367,6 +412,7 @@ def main() -> int:
     ap.add_argument("--states", help="comma-separated events that are states")
     ap.add_argument("--state-column", help="column holding the state name")
     ap.add_argument("--series", action="append", default=[], help="EVENT:column to fit against occurrence number")
+    ap.add_argument("--latency", action="append", default=[], help="INPUT/RESPONSE events for input response time")
     ap.add_argument("--confidence", type=float, default=0.95)
     ap.add_argument("--plan-halfwidth", type=float, help="report trials needed for this rate interval half-width")
     ap.add_argument("--out", type=Path)
@@ -387,7 +433,7 @@ def main() -> int:
     if rows and frame_s == 0 and all(r["_frame"] is None for r in rows):
         frame_s = 0.0  # times given in seconds: quantization unknown; say so below
     report = {"tool": TOOL, "schema": SCHEMA, "source": str(args.events) if args.events else None,
-              "rows": len(rows), "events": {}, "intervals": [], "rates": [], "states": None, "series": [],
+              "rows": len(rows), "events": {}, "intervals": [], "rates": [], "states": None, "series": [], "latency": [],
               "measurements": [], "warnings": []}
     for r in rows:
         report["events"][r["event"]] = report["events"].get(r["event"], 0) + 1
@@ -395,7 +441,8 @@ def main() -> int:
         report["warnings"].append("times were given in seconds without --fps: frame quantization is not included in the uncertainties")
 
     targets = args.intervals or ([e for e, c in report["events"].items() if c >= 3]
-                                 if not (args.rate or args.counts or args.states or args.state_column or args.series) else [])
+                                 if not (args.rate or args.counts or args.states or args.state_column or args.series
+                                         or args.latency) else [])
     src = Path(args.events).name if args.events else "counts"
     for ev in targets:
         st = interval_stats(rows, ev, args.by, frame_s, args.confidence)
@@ -442,6 +489,16 @@ def main() -> int:
         if not rows:
             rc.fail("--series needs an event table")
         report["series"].append(series_stats(rows, spec))
+    for spec in args.latency:
+        if not rows:
+            rc.fail("--latency needs an event table")
+        st = latency_stats(rows, spec, args.by, frame_s, args.confidence)
+        report["latency"].append(st)
+        report["measurements"].append(measurement(
+            "input_latency", f"input response time, {st['input']} to {st['response']} ({st['pairs']} presses; range "
+                             f"{st['min_s']}..{st['max_s']} s)", st["mean_s"], st["uncertainty_s"], "s",
+            f"event_stats {src}: {st['pairs']} {st['input']} rows paired with the next {st['response']} row; mean with a "
+            f"{int(args.confidence * 100)}% Student-t interval and ±1 frame quantization", n=st["pairs"]))
     if args.out:
         rc.write_json(args.out, report)
     if args.json:
@@ -470,6 +527,12 @@ def main() -> int:
         for name, d in s["dwell"].items():
             print(f"dwell {name}: n {d['n']}, mean {d['mean_s']} s, sd {d['sd_s']}, range {d['min_s']}..{d['max_s']} s")
         for n_ in s["notes"]:
+            print(f"  - {n_}")
+    for st in report["latency"]:
+        fr = f" ({st['mean_frames']} frames)" if st.get("mean_frames") is not None else ""
+        print(f"latency {st['input']} -> {st['response']}: {st['pairs']} presses; mean {st['mean_s']} ± {st['uncertainty_s']} s{fr}; "
+              f"range {st['min_s']}..{st['max_s']} s")
+        for n_ in st["notes"]:
             print(f"  - {n_}")
     for st in report["series"]:
         print(f"series {st['series']} (n {st['n']}): " + "; ".join(f"{f['model']} rms {f['rms']} {f['params']}" for f in st["fits"]))

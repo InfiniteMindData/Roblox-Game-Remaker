@@ -13,6 +13,7 @@ claim of "matches the original" points to a comparison artifact.
 | UI layout | Reference screenshot boxes | Capture boxes | `ui_measure.py --compare`, `visual_compare.py --grid` | % of screen error per element |
 | Animation | Keypose frames | Frozen-pose captures | `contact_sheet.py` side by side, `visual_compare.py --edges-only` | Frame error, silhouette IoU |
 | Timing (UI, abilities, VFX) | Frame ranges | Harness or markers | `remake_calc.py frames` | ± frames |
+| Input response time | `event_stats.py --latency` on overlay footage | Harness with `DevTools.MeasureLatency` | `measure_compare.py` (`input_latency`) | ± frames (s) |
 | Audio sync | `audio_onsets.py` on reference | Same on a recording of the recreation | Diff of onset times | ms |
 | Sound match (replacement assets) | `audio_compare.py analyze` segment | The original or licensed replacement file | `audio_compare.py compare` | dB, duration ratio, cents, brightness ratio |
 

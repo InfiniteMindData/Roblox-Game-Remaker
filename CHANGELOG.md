@@ -41,6 +41,11 @@ Measurement beyond side-on 2D footage.
   time and spectral centroid of a clip segment (numpy FFT), and a compare mode that scores an
   original or licensed replacement on level, duration, envelope shape, pitch and brightness, with
   hints in Roblox terms (`PlaybackSpeed`, `AudioPitchShifter.Pitch`, `AudioPlayer.Volume`).
+- Input response time: the template's MeasurementHarness gains a latency mode
+  (`DevTools.MeasureLatency`) that logs rendered frames from a press to the first visible change;
+  `measure_compare.py` judges it as `input_latency`; `event_stats.py --latency press/move`
+  measures the same from footage with an input overlay or a filmed controller; recipe 19 states
+  the limits (no visible input means `ASSUMED`; filmed controllers include display latency).
 - `remake_common.line_plot`: Pillow line charts shared by the new tools.
 - `ledger.py import`: imports any tool's `measurements` block (the new tools all write one);
   camera and other Config inputs never become harness targets.

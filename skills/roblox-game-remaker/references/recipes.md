@@ -279,3 +279,30 @@ not copy the reference. Apply the hints (edit the attack and decay for envelope 
 and compare again. Done when `audio_compare compare` exits 0, or the remaining differences are
 listed as intentional in the `AUD` entry.
 
+## 19. Measure input response time
+
+Needs reference footage with an input overlay or a filmed controller; without one, record the
+latency as `ASSUMED` and stop here.
+
+```bash
+python scripts/extract_frames.py clip.mp4 --out remake/frames/inputs --mode range --start <a> --end <b>
+# log each press frame (overlay lights up) and the first frame of the response into remake/systems/latency.csv
+python scripts/event_stats.py remake/systems/latency.csv --fps 60 --latency press/move --out remake/systems/latency.json
+python scripts/ledger.py import remake remake/systems/latency.json --evidence EV-00N
+python scripts/ledger.py targets remake --tier A
+```
+
+In Studio, set `Config.DevTools.MeasureLatency = true` (or the Workspace attribute
+`RemakeMeasureLatency`), press the same input 5 or more times, copy the Output, then:
+
+```bash
+python scripts/studio_snippets.py extract-log console.txt --out remake/logs/latency-01.log
+python scripts/measure_compare.py remake/logs/latency-01.log --targets remake/targets.json --latency-key Space --allow-missing
+```
+
+The harness counts rendered frames from the press to the first frame whose character position,
+velocity or Humanoid state changed. It excludes display latency, so compare it with overlay
+footage, not with a filmed screen, unless you add the display's latency. Done when
+`input_latency` passes, or the difference is reported with its cause (for example a buffered
+jump in the original).
+

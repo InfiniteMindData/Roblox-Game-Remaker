@@ -68,9 +68,20 @@ python scripts/remake_calc.py frames --start 240 --end 263 --fps 60
 # -> 23 frames = 0.3833 s ± 0.0167 s
 ```
 
-Typical events: input to motion start (the latency the footage shows, so input must be visible),
-attack startup, active and recovery, dash duration, UI tween duration, respawn time, combo
-windows.
+Typical events: input to motion start, attack startup, active and recovery, dash duration, UI
+tween duration, respawn time, combo windows.
+
+**Input response time** needs the input to be visible: an input overlay in the capture, or a
+controller filmed together with the screen. Log the press frame and the first frame that shows
+the response as `press` and `move` (or `jump`, `attack`) rows, and run
+`event_stats.py --latency press/move` (recipe 19). Limits:
+
+- Without a visible input it cannot be measured from footage: mark it `ASSUMED` and say so.
+- An overlay drawn by capture software reflects when the PC saw the input; a filmed controller
+  also includes the display's latency (often tens of milliseconds). Write which one in the
+  method, because the in-game harness (`DevTools.MeasureLatency`) times engine latency inside
+  Studio and excludes the display.
+- At 60 fps each delay is known to about one frame; log at least 5 presses, 10 to see the spread.
 
 ## 5. Motion: positions, speeds, jumps
 
