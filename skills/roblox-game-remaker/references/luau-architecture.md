@@ -92,7 +92,7 @@ end)
   frame rate. Its frequency and damping come from `remake_calc.py spring`, which derives them
   from measured overshoot and settle time.
 - **Easing:** when the original's UI curve is not a `TweenService` style, drive it with
-  `Easing.cubicBezier(x1, y1, x2, y2)` from a `RenderStepped` loop.
+  `Easing.cubicBezier(x1, y1, x2, y2)` from a `PreRender` loop.
 - **Character lifecycle:** bind on `CharacterAdded` (and for an existing character), keep every
   connection in a per-character list, and disconnect on `CharacterRemoving`. All client modules in
   the template follow this.
@@ -122,3 +122,7 @@ end)
 - Pool VFX and projectiles; avoid creating Instances every frame.
 - Profile with the MicroProfiler (Ctrl+Alt+F6, or ⌘⌥F6 on macOS), the Script Profiler, and the
   Developer Console memory tab. Quest targets at least 72 fps (see `vr-quest.md`).
+
+For new client render drivers use `PreRender`, which supersedes `RenderStepped`; use
+`BindToRenderStep` when explicit render priority is needed. See the live
+[RunService reference](https://create.roblox.com/docs/reference/engine/classes/RunService#PreRender).

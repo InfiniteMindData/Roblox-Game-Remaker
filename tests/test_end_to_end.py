@@ -169,7 +169,9 @@ class EndToEndTests(unittest.TestCase):
             (remake / "delivery-report.md").write_text(report, encoding="utf-8")
             self.assertEqual(self.phase(), 8)
             status = run("remake_status.py", remake, "--write").stdout
-            self.assertIn("All gates pass", status)
+            self.assertIn("Provisional slice complete", status)
+            self.assertIn("assumed", status)  # Template Config still contains honest placeholders.
+            self.assertNotIn("All gates pass", status)
             self.assertIn("speedrun", (remake / "STATUS.md").read_text(encoding="utf-8"))
 
 

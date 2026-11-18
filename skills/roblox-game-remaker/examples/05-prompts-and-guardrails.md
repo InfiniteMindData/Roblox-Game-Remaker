@@ -16,7 +16,11 @@ How an agent using this skill should respond. "Game X" stands for whatever game 
 
 ## "Here's a YouTube link, analyze the jump frame by frame."
 
-- If you can fetch and decode it: probe it, extract the frames, and measure with the scripts.
+- First make the per-observable feasibility table from `references/research-protocol.md`:
+  scale, camera geometry/motion, visible inputs, content fps, and aspect ratios. A public clip
+  rarely identifies all requested quantities. Offer one bounded original greybox/HUD slice.
+- If permitted tools can fetch and decode it: preserve local provenance, probe, extract and
+  measure only identifiable quantities. The bundled scripts do not download URLs.
 - If you cannot (the network is blocked, there is no download tool, or the platform's terms
   forbid it), say so plainly: "I couldn't access that video, so I haven't analyzed it." Record it
   in `evidence.json` with `"accessible": false`. Ask the user to download or record the clip and
@@ -27,7 +31,9 @@ How an agent using this skill should respond. "Game X" stands for whatever game 
 
 Proceed with clearly labeled `ASSUMED` values (for example "typical platformer: about 0.4 s
 rise, falls faster"). List them for the user, make them easy to tune in `Config`, and say that
-1:1 needs measurement.
+1:1 needs measurement. Ask for explicit consent for the bounded slice, then persist who,
+when and why with `ledger.py accept-gap` for each affected entry/phase. Status advances
+provisionally, not as measured verification; strict checking still reports assumptions.
 
 ## "Extract the models and music from the game files and put them in Roblox."
 

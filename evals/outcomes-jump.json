@@ -1,0 +1,7 @@
+{
+  "files": ["remake/media/demo_jump.mp4", "remake/tracks/jump.json"],
+  "metrics": {
+    "jump_apex": {"value": 8.0, "tolerance": 0.3, "unit": "studs"},
+    "jump_rise_time": {"value": 0.4, "tolerance": 0.04, "unit": "s"}
+  }
+}

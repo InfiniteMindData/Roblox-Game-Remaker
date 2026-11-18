@@ -121,7 +121,7 @@ original does elsewhere.
   where exact `TweenService` equivalence matters, compare a few values with
   `TweenService:GetValue()` in Studio. When no curve fits (rms residual above about 5% of the
   change), the motion may be keyframed or several tweens: fit narrower windows, or use
-  `Easing.cubicBezier` with a `RenderStepped` driver.
+  `Easing.cubicBezier` with a `PreRender` driver.
 - Stagger: measure the per-item delay in list animations.
 - Sounds: align UI sounds to the first frame of the visual change (`audio_onsets.py`).
 
@@ -159,3 +159,7 @@ Layout first, measured the same way as the reference, at whatever size the Studi
    `studio-mcp.md`: captures are viewport-sized JPEGs).
 7. Check every state and transition, not only the default frame: log state changes from the UI
    code and drive it with `user_keyboard_input`.
+
+For new client render drivers use `PreRender`, which supersedes `RenderStepped`; use
+`BindToRenderStep` when explicit render priority is needed. See the live
+[RunService reference](https://create.roblox.com/docs/reference/engine/classes/RunService#PreRender).

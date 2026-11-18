@@ -77,11 +77,34 @@ analysis and code generation.
 
 ## 2. Install the tools the scripts use
 
-Required for the analysis scripts:
+Required for the analysis scripts. First resolve `SKILL_ROOT` to the installed folder
+containing `SKILL.md` (not the repository or project), and `PROJECT_ROOT` to your project:
+
+| Layout | `SKILL_ROOT` |
+|---|---|
+| Working in this repo | `<checkout>/skills/roblox-game-remaker` |
+| Manual `.agents` or skills CLI project install | `<project>/.agents/skills/roblox-game-remaker` (follow any client-created link) |
+| Manual Claude | `<project>/.claude/skills/roblox-game-remaker` |
+| Claude plugin | Client-reported plugin skill directory under its versioned cache, ending in `skills/roblox-game-remaker` |
+| Global CLI/manual | Client-reported user-wide skills folder, ending in `roblox-game-remaker` |
+
+Never assume plugin/cache version paths. Ask the agent to report the loaded `SKILL.md` path,
+then use its parent directory. Check `SKILL_ROOT/scripts/requirements.txt` exists. Bootstrap
+from the user's project, not from the installation:
 
 ```bash
-pip install -r skills/roblox-game-remaker/scripts/requirements.txt
+export SKILL_ROOT="/absolute/path/to/installed/roblox-game-remaker"
+export PROJECT_ROOT="/absolute/path/to/your/project"
+cd "$PROJECT_ROOT"
+python -m venv "$PROJECT_ROOT/.venv"
+. "$PROJECT_ROOT/.venv/bin/activate"
+python -m pip install -r "$SKILL_ROOT/scripts/requirements.txt"
+python "$SKILL_ROOT/scripts/remake_status.py" "$PROJECT_ROOT/remake" --init --game "My Game" --write
 ```
+
+On Windows PowerShell set `$env:SKILL_ROOT` and `$env:PROJECT_ROOT`, and activate
+`& "$env:PROJECT_ROOT/.venv/Scripts/Activate.ps1"` instead. Subsequent `python` commands use
+that environment. Re-running session start preserves existing files.
 
 - **Python 3.10+** with numpy and Pillow (from the requirements file above).
 - **ffmpeg and ffprobe** for the video scripts (`probe_video`, `extract_frames`, `audio_onsets`):
@@ -102,8 +125,18 @@ Optional:
 Check what the agent will see:
 
 ```bash
-python skills/roblox-game-remaker/scripts/doctor.py
+python "$SKILL_ROOT/scripts/doctor.py" "$PROJECT_ROOT"
 ```
+
+When validating a build, prefer the explicit project configuration:
+
+```bash
+python "$SKILL_ROOT/scripts/config_check.py" "$PROJECT_ROOT/remake" --config "$PROJECT_ROOT/src/shared/Remake/Config.luau"
+```
+
+Automatic discovery ignores installed/bundled skills, templates, samples and dependencies.
+It requires exactly one project candidate; multiple candidates produce a usage error listing
+paths, not a guessed selection. `--config` always selects the file you give it.
 
 ## 3. Connect Roblox Studio over MCP (optional, recommended)
 
@@ -130,8 +163,7 @@ Details: `skills/roblox-game-remaker/references/studio-mcp.md`.
 ## 4. Check the install
 
 ```bash
-cd skills/roblox-game-remaker
-bash examples/demo/run_demo.sh /tmp/remake-demo
+bash "$SKILL_ROOT/examples/demo/run_demo.sh" "$PROJECT_ROOT/remake-demo"
 ```
 
 The demo generates synthetic footage with known answers and runs the whole measurement pipeline.

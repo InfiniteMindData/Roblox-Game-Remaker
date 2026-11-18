@@ -56,41 +56,23 @@ under `remake/` (created by `scripts/breakdown_init.py`).
 
 ## Capability check (once per session)
 
-Run `python scripts/doctor.py` (add `--json` for machine output). It reports Python packages,
-ffmpeg/ffprobe, Blender, Rojo, Lune, StyLua, Selene, and whether `remake/` exists. Then check for
-yourself:
-
-| Capability | How to tell | If missing |
-|---|---|---|
-| You can view images | Open one extracted frame and describe a verifiable detail | Rely on numeric script output and user descriptions; say so in the report |
-| Reference media | Files the user gave, or `remake/media/` | Ask for captures, using the capture guide in `references/research-protocol.md` |
-| Web research | A search or fetch succeeds | Work from user-provided material; list unresearched questions |
-| Studio MCP | Tools such as `list_roblox_studios`, `execute_luau`, `screen_capture` are available | Use the Rojo/manual path; give paste-ready code and exact Studio steps |
-| Rojo project | `*.project.json` in the project | Offer `assets/rojo-template/`, or work in Studio directly |
-| Blender | `doctor.py` finds `blender` | Give the user the Blender steps and the export script to run |
+Resolve `SKILL_ROOT` to this file's directory and `PROJECT_ROOT` to the user's project, never
+the skill installation. Bootstrap the project-local Python environment with
+[recipes](references/recipes.md#1-start-a-remake-first-session). From `PROJECT_ROOT`, run
+`python "$SKILL_ROOT/scripts/doctor.py" "$PROJECT_ROOT"`. Check image viewing and Studio MCP
+tools yourself. Without MCP, use Rojo/manual steps; without media, list gaps, not fake analysis.
 
 ## Session start (every session)
 
-Run `python scripts/remake_status.py remake --write`. It evaluates every phase gate, lists open
-questions, assumptions and inaccessible sources, names the next action, and saves
-`remake/STATUS.md` as a handoff. Follow its next action, and run it again after each phase.
-For common tasks, [references/recipes.md](references/recipes.md) has exact command sequences.
+Run `python "$SKILL_ROOT/scripts/remake_status.py" "$PROJECT_ROOT/remake" --init --write`.
+It initializes fresh projects and writes `remake/STATUS.md`; follow its next action after each
+phase. Below, script names resolve under `SKILL_ROOT/scripts/`, artifacts under `PROJECT_ROOT`.
 
 ## Long sessions
 
-A remake outlasts any one context window. Keep it manageable:
-
-- **The workspace is the memory, not the conversation.** `remake/STATUS.md`, the ledgers
-  (`evidence.json`, `measurements.json`), `history.jsonl` and `scorecard.md` carry the state
-  between sessions. Read them at the start; write every number to them when you measure it, never
-  only into chat. Run `remake_status.py --write` and `fidelity_report.py` before you stop.
-- **Delegate bulk frame review.** Stepping through hundreds of frames, logging event tables, or
-  checking boxes across many clips can go to subagents when the client supports them. Ask them to
-  return numbers (frame indexes, boxes, CSV rows, paths to tool JSON), not images, so the main
-  thread stays small. Spot-check one cited frame yourself before you rely on the batch.
-- **Open images sparingly.** Open a frame to confirm a box, a keypose or a mismatch; otherwise
-  work from the tools' JSON output.
-- **One system per iteration**, scored before the next change, so a regression points at its cause.
+Read status, ledgers and scorecard on resume; persist measurements immediately. Score one
+system per iteration to isolate regressions. Delegated measurements need artifact paths and
+frame indexes; spot-check them. Run status and fidelity reporting before stopping.
 
 ## Workflow
 
@@ -99,7 +81,9 @@ Each phase ends with a gate. Do not start Phase 5 on a system whose breakdown en
 **Phase 0: Intake and rights.** Fill `remake/00-intake.md`. Ask only for what is missing: exact
 game, version or patch, and platform; reference media the user can supply; rights mode; scope
 (start with a vertical slice: one level or loop); target devices (PC, mobile, console, Quest 3);
-multiplayer needs; fidelity tier. *Gate: rights mode and scope recorded.*
+multiplayer needs; fidelity tier. For clip-only requests, classify each observable as measurable,
+relative-only, inferred or blocked; offer a bounded provisional slice using the
+[feasibility table](references/research-protocol.md#clip-only-feasibility-before-research). *Gate: rights mode and scope recorded.*
 
 **Phase 1: Research.** Follow [references/research-protocol.md](references/research-protocol.md).
 Record every source with `scripts/ledger.py add-evidence`, including the ones you could not
@@ -121,7 +105,9 @@ side-on scale. *Gate: `remake/measurements.json` and
 behavior, physics constant, character, animation, UI screen, environment, VFX, sound and system,
 each with evidence, values, a Roblox plan and an acceptance test. Run
 `python scripts/breakdown_check.py remake --strict`. Show the user a summary, including open
-questions and assumptions. *Gate: the checker passes, or the user accepts the listed gaps.*
+questions and assumptions. *Gate: strict check passes, or the user explicitly consents to
+scoped provisional gaps (`ledger.py accept-gap`; see recipes). Persist who/when/why; changed
+inputs invalidate consent. Assumptions stay unmeasured; verification cannot be waived.*
 
 **Phase 4: Translation plan.** Map each entry to Roblox using
 [references/roblox-translation.md](references/roblox-translation.md): units, gravity, FOV
@@ -180,8 +166,8 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | Script | Use |
 |---|---|
 | `doctor.py` | Report available tools and the working mode |
-| `remake_status.py remake --write` | Phase gates, open items, next action; writes `remake/STATUS.md` |
-| `ledger.py add-evidence / add-measurement / import / targets` | Ledger entries with automatic IDs and checks; any tool's measurements into the ledger; targets |
+| `remake_status.py remake --init --write` | Initialize; blocked/provisional/verified gates; next action and `STATUS.md` |
+| `ledger.py add-evidence / add-measurement / import / targets / accept-gap` | IDs, measurement imports, targets; scoped consent with who/when/why |
 | `config_check.py remake` | Config.luau values against their measurements; stale, unsourced and assumed values |
 | `find_mover.py frames/manifest.json` | Detect moving subjects (camera motion cancelled); suggest `--bbox` and `--anchor-bbox` |
 | `frame_zoom.py frame.png --region x,y,w,h --mark x,y,w,h` | Zoomed crop with pixel rulers to read and confirm exact coordinates |
@@ -209,10 +195,8 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `fidelity_report.py remake --diff-log --label "it7: exposure"` | Score every shot, metric and clip against tolerance; history, scorecard and diff-log entry; exit 1 on a regression |
 | `blender_roblox_export.py` | Run inside Blender: check Roblox mesh and rig limits, then export FBX or glTF |
 
-Rehearse the pipeline, or check an install, with synthetic footage that has known answers:
-`bash examples/demo/run_demo.sh /tmp/remake-demo`. The walkthroughs in `examples/` show the
-movement, HUD and Quest 3 workflows with real script output, and
-`examples/04-sample-workspace/remake/` is a complete breakdown that passes the strict check.
+Synthetic install check: `bash "$SKILL_ROOT/examples/demo/run_demo.sh" /tmp/remake-demo`.
+`examples/` has movement, HUD and Quest walkthroughs plus a strict-checked sample workspace.
 
 ## Evidence labels
 
@@ -222,7 +206,7 @@ movement, HUD and Quest 3 workflows with real script output, and
 | `MEASURED` | Measured by you from accessible footage or captures | Evidence ID, method, value ± uncertainty |
 | `OBSERVED` | Seen in footage but not quantified | Evidence ID with frame or timestamp |
 | `INFERRED` | Reasoned from other evidence | The evidence IDs and the reasoning |
-| `ASSUMED` | Placeholder with no evidence | Flagged to the user; replace when possible |
+| `ASSUMED` | Placeholder with no evidence | Flagged; scoped acceptance permits provisional work, never measured fidelity |
 | `UNKNOWN` | Not determined yet | An open question in the breakdown |
 
 ## Roblox facts that drive 1:1 work

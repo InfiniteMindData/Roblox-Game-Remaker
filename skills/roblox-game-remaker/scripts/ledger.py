@@ -26,6 +26,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import datetime as _dt
 import json
 import os
@@ -291,9 +292,79 @@ def cmd_list(args) -> int:
     return 0
 
 
+# A changed input invalidates acceptance rather than silently extending its scope.
+GAP_SCOPES = {"research", "analysis", "translation", "build"}
+
+
+def gap_fingerprint(remake: Path, config: Path | None = None) -> str:
+    digest = hashlib.sha256()
+    for name in ("00-intake.md", "breakdown.md", "evidence.json", "measurements.json", "targets.json"):
+        path = remake / name
+        digest.update(name.encode())
+        digest.update(path.read_bytes() if path.is_file() else b"<missing>")
+    import config_check
+
+    config = config or config_check.find_config(remake)
+    digest.update(config.read_bytes() if config and config.is_file() else b"<no-config>")
+    for path in sorted((remake / "ui").glob("*.json")):
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    shots = remake / "shots.json"
+    digest.update(shots.read_bytes() if shots.is_file() else b"<no-shots>")
+    return digest.hexdigest()
+
+
+def accepted_gaps(remake: Path, config: Path | None = None) -> list[dict]:
+    path = remake / "acceptances.json"
+    if not path.is_file():
+        return []
+    data = rc.read_json(path)
+    fingerprint = gap_fingerprint(remake, config)
+    valid = []
+    for item in data.get("acceptances", []):
+        if not isinstance(item, dict) or not all(isinstance(item.get(k), str) and item[k].strip()
+                                                for k in ("scope", "by", "when", "reason", "fingerprint")):
+            continue
+        try:
+            _dt.date.fromisoformat(item["when"])
+        except ValueError:
+            continue
+        if item["fingerprint"] == fingerprint:
+            valid.append(item)
+    return valid
+
+
+def cmd_accept_gap(args) -> int:
+    import breakdown_check
+
+    if not (args.remake / "breakdown.md").is_file():
+        rc.fail("breakdown.md not found; run breakdown_init.py first")
+    if not args.by.strip() or not args.reason.strip():
+        rc.fail("acceptance requires a named owner and reason")
+    entries, _ = breakdown_check.parse_breakdown(args.remake / "breakdown.md", breakdown_check.Report(None))
+    eligible = {e["id"] for e in entries if e["fields"].get("status", "").upper() in ("ASSUMED", "UNKNOWN", "INFERRED")}
+    if args.scope not in GAP_SCOPES | eligible:
+        rc.fail("scope must be research, analysis, translation, build, or an ASSUMED/UNKNOWN/INFERRED entry ID; verification cannot be waived")
+    path = args.remake / "acceptances.json"
+    data = rc.read_json(path) if path.exists() else {"schema": 1, "acceptances": []}
+    entry = {"scope": args.scope, "by": args.by.strip(), "when": today(), "reason": args.reason.strip(),
+             "fingerprint": gap_fingerprint(args.remake, args.config)}
+    data["acceptances"].append(entry)
+    save(path, data)
+    print(f"Accepted {args.scope} provisionally; not measured or verified.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("accept-gap", help="persist the user's scoped provisional acceptance; never waives verification")
+    p.add_argument("remake", type=Path)
+    p.add_argument("--config", type=Path, help="explicit Config.luau when automatic discovery is ambiguous")
+    p.add_argument("--scope", required=True)
+    p.add_argument("--by", required=True, help="person who accepted the gap (only with their consent)")
+    p.add_argument("--reason", required=True, help="bounded slice and why proceeding is acceptable")
+    p.set_defaults(fn=cmd_accept_gap)
     p = sub.add_parser("add-evidence")
     p.add_argument("remake", type=Path)
     p.add_argument("--type", required=True)

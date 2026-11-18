@@ -92,7 +92,11 @@ effect is a sprite animation.
 | Beams and lasers | `Beam` (texture, `TextureSpeed`, curve) |
 | Flashes and glows | `PointLight` or `SpotLight` with a short tween, emissive mesh, `BloomEffect` |
 | Shockwaves and rings | A mesh with a scale and transparency tween |
-| Outlines and hover glows | `Highlight` (the client shows at most 255 at once), or shell meshes |
+| Outlines and hover glows | `Highlight` (255 client slots, including disabled instances), or shell meshes |
+
+Disabled Highlights still consume slots: destroy permanently unused instances rather than
+keeping an unbounded disabled pool. Bound any reusable pool within the 255-slot client budget;
+extra instances are silently ignored. See [enable or disable](https://create.roblox.com/docs/effects/highlighting#enable-or-disable).
 
 Trigger timing comes from animation markers, never from `task.wait` guesses.
 

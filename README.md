@@ -1,14 +1,16 @@
 # Roblox Game Remaker
 
-An installable [Agent Skill](https://agentskills.io/specification) that helps AI coding agents
-(Claude Code, Codex, Cursor, Gemini CLI, Copilot and others) recreate a game in Roblox Studio as
-close to 1:1 as the engine allows, and **prove it with measurements**.
+An installable [Agent Skill](https://agentskills.io/specification) for evidence-linked game
+reconstruction in Roblox Studio. Its difference is **measurement, uncertainty, provenance and
+regression tracking**: record where a number came from, how uncertain it is, and whether the
+next change made the match better or worse. Missing evidence stays unknown; accepted guesses
+support a clearly provisional slice, not a claim of measured fidelity.
 
-Most "make a game like X" prompts produce something that looks vaguely right and feels wrong.
-This skill makes the agent work like a careful porting team: research the original, measure it
-frame by frame, write every mechanic down with evidence before building, translate each number
-into Roblox's conventions, then compare the build against the reference until the measured gaps
-are within tolerance.
+Published Studio checks cover a custom fighting-game simulation and a UI remake, not the full
+Humanoid platformer loop. MovementFeel, CameraRig, AnimationDriver, MeasurementHarness,
+InputProbe, ShotCamera and Bootstrap integration remain unverified in Studio. Synthetic Python
+and pure Luau tests do not close that gap; see [the verification record](docs/VERIFICATION.md).
+No matched with/without-skill trials have been run, so improved agent outcomes are not claimed.
 
 ```text
 research → measure → document → translate → build → compare → fix
@@ -49,9 +51,9 @@ research → measure → document → translate → build → compare → fix
 | `clip_compare.py` | Compare a build recording or harness log with the reference clip over time: aligned position error, event offsets, overlay plot |
 | `blender_roblox_export.py` | Check Roblox mesh and rig limits in Blender, then export |
 | `doctor.py` | Report which tools are available |
-| `remake_status.py` | Phase gates, open items, next action; writes `STATUS.md` |
+| `remake_status.py` | Initialize before status; blocked / provisional / verified gates and next action; writes `STATUS.md` |
 | `fidelity_report.py` | Score every shot, metric and clip against tolerance each iteration; history, scorecard, diff-log entry; exit 1 on a regression |
-| `ledger.py` | Evidence and measurements with automatic IDs; tracker import; targets |
+| `ledger.py` | Evidence and measurements with automatic IDs; scoped gap acceptance (who/when/why); tracker import; targets |
 | `config_check.py` | `Config.luau` values against their measurements (drift, missing sources, assumptions) |
 | `find_mover.py` / `frame_zoom.py` | Detect moving subjects and suggest tracking boxes; zoomed crops with pixel rulers |
 | `pose_track.py` | Multi-point tracking: 2D joint angles, cycle period, keypose table |
@@ -69,8 +71,8 @@ research → measure → document → translate → build → compare → fix
   the way real captures are) and a one-command pipeline run;
   walkthroughs for movement feel, HUD recreation and Quest 3; a complete sample workspace
   (breakdown plus measured `Config.luau`); and guardrail scenarios.
-- **Evals** (`evals/` at the repository root): 19 test prompts with expected behavior and a pattern grader, for measuring
-  the skill with and without it, as the Agent Skills evaluation guide recommends.
+- **Evals** (`evals/` at the repository root): 19 test prompts, a **wording lint** (not outcome evidence), and a local-artifact
+  grader against independent synthetic ground truth. With/without-skill trials remain unrun.
 
 ## Install
 
@@ -88,11 +90,26 @@ Or, for any agent:
 npx skills add InfiniteMindData/Roblox-Game-Remaker
 ```
 
-Then install the script dependencies (and ffmpeg):
+Then resolve the **installed** skill folder (the one containing `SKILL.md`) and your project
+separately; do not run checkout-relative commands in a plugin cache. For example, a manual or
+skills-CLI project install commonly uses `$PWD/.agents/skills/roblox-game-remaker`; a Claude
+manual install uses `.claude/skills/roblox-game-remaker`. For a plugin, use the skill path exposed
+by the client (its versioned cache path can change). In this repo use `$PWD/skills/roblox-game-remaker`.
 
 ```bash
-pip install -r skills/roblox-game-remaker/scripts/requirements.txt
+export SKILL_ROOT="/absolute/path/to/installed/roblox-game-remaker"
+export PROJECT_ROOT="/absolute/path/to/your/project"
+cd "$PROJECT_ROOT"
+python -m venv "$PROJECT_ROOT/.venv"
+. "$PROJECT_ROOT/.venv/bin/activate"
+python -m pip install -r "$SKILL_ROOT/scripts/requirements.txt"
+python "$SKILL_ROOT/scripts/doctor.py" "$PROJECT_ROOT"
+python "$SKILL_ROOT/scripts/remake_status.py" "$PROJECT_ROOT/remake" --init --game "My Game" --write
 ```
+
+Install **ffmpeg/ffprobe** from your package manager for video analysis. Windows PowerShell:
+use `$env:SKILL_ROOT` / `$env:PROJECT_ROOT` and activate `.venv/Scripts/Activate.ps1`. Full
+layout-specific instructions: [installation](docs/INSTALLATION.md).
 
 **Working in this repo?** Nothing to install: `.claude/skills/roblox-game-remaker` links to the
 skill, so Claude Code loads it in every session started here (on Windows, clone with
