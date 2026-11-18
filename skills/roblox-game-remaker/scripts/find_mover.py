@@ -169,11 +169,18 @@ def main() -> int:
     # Pass 2 (streamed): the frame most different from both, and every mover's trail (keeps the anchor off it).
     second = {}
     trail = np.zeros(ref.shape, bool)
+    # Screen-fixed pixels (HUD) stay the same on the raw frames however far the camera has moved.
+    stable, n_far = np.zeros(ref.shape, np.int32), 0
+    stable_thr = max(4.0, 2 * noise)
     for i in usable:
         img = img_j if i == j else load(i)
         al = al_j if i == j else warp_to_first(img, S_all[i])
         df = np.abs(al - ref)
         trail |= np.nan_to_num(df) > thr
+        sx, sy = mt.sim_apply(S_all[i], ref.shape[1] / 2.0, ref.shape[0] / 2.0)
+        if math.hypot(sx - ref.shape[1] / 2.0, sy - ref.shape[0] / 2.0) > 8:
+            stable += np.abs(img - ref) < stable_thr
+            n_far += 1
         if i != j:
             second[i] = min(energy[i], changed(al, al_j))
     k = max(second, key=second.get) if second else j
@@ -202,6 +209,14 @@ def main() -> int:
         overlay = (raw[0] < 0.5 * typical) & (raw[1] < 0.5 * typical) & mask
         overlay = dilate(overlay, 2)
         mask &= ~overlay
+        # Their ghosts: where an aligned frame shows a screen-fixed region at a different place (a HUD
+        # panel seen through the camera compensation) is not a mover either. Found on the raw frames, so
+        # a HUD the camera has moved away from still counts; textured pixels only (flat sky is static too).
+        screen_fixed = dilate(stable >= 0.9 * n_far, 2) if n_far >= 3 else np.zeros_like(mask)
+        for S in (S_all[j], S_all[k]):
+            ghost = warp_to_first(screen_fixed.astype(np.float32), S)
+            mask &= ~(np.nan_to_num(ghost) > 0.25)
+        overlay |= screen_fixed & ~covered
     cands = merge_boxes(components(mask, min_area=max(4, mask.size // 20000)))
     if cands:
         cands = [c for c in cands if c[4] >= 0.1 * cands[0][4]]

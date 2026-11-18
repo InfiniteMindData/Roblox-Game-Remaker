@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Track a feature across extracted frames and derive motion parameters.
 
-Template matching uses FFT-based normalized cross-correlation with sub-pixel peak refinement.
-An optional static anchor feature cancels translational camera motion. With --px-per-unit, the
-results are in world units (studs or meters); otherwise they are in pixels.
+Template matching uses FFT-based normalized cross-correlation (scores in [-1, 1]; flat windows score
+0) with sub-pixel peak refinement. Camera motion is removed first: by default a whole-frame model
+(shift, zoom and roll per frame, chained over the clip, robust to the subject and HUD), or a static
+--anchor-bbox for the shift with the whole-frame zoom and roll, handing off to the whole-frame
+model when the anchor leaves the view. Positions are in first-frame pixels, so --px-per-unit is
+measured on the first frame. With --px-per-unit, the results are in world units (studs or
+meters); otherwise they are in pixels. Frames are streamed, not held in memory.
 
 Analyses:
   jump   parabola fit of the airborne segment: apex height, rise and fall times, gravity
@@ -18,10 +22,14 @@ tracks to world units with camera_solve.py ground. --scale-search follows a subj
 apparent size changes and warns when one --px-per-unit cannot describe the whole clip.
 
 Real footage: frames that repeat the previous position while the subject moves (30 fps content
-in a 60 fps file) are dropped from the analyses and reported as content_fps; samples where the
-anchor was lost, or the subject was lost (low score plus a jump or a stall), are excluded and
-marked; the steady speed is checked half against half so slow drift widens its uncertainty; and
-a track with more than 20% unusable samples is marked reliable: false, which ledger.py refuses.
+in a 60 fps file) are dropped from the analyses and reported as content_fps. Losing the subject is
+checked on every frame whatever the score (forward-backward match, jumps larger than the subject,
+stalls with a weakening match, reversals on a doubtful match); lost samples, samples where the
+camera or the anchor could not be measured, and low-score samples whose position jumps or stalls
+are excluded and marked, with the first lost sample named. The steady speed is checked half
+against half so slow drift widens its uncertainty. A track with more than 20% unusable samples, a
+zoom that was not removed, or a re-lock on appearance alone is marked reliable: false, which
+ledger.py refuses.
 
 Examples:
   python motion_track.py frames/jump/manifest.json --bbox 912,604,48,96 --px-per-unit 31.5 --unit studs --analyze jump --out tracks/jump.json
@@ -57,7 +65,7 @@ def _box_sum(ii, th, tw):
 def ncc_map(search, tmpl):
     """Normalized cross-correlation of tmpl over every valid position in search, in [-1, 1].
 
-    A window with (almost) no variance has no defined correlation: it scores 0. Before 1.4 the
+    A window with (almost) no variance has no defined correlation: it scores 0. Before the fix the
     variance was floored at 1e-9, so FFT rounding error over a flat wall scored up to 7.8 and the
     tracker jumped onto it.
     """
@@ -343,6 +351,8 @@ class CameraMotion:
                 if any(x0 < ex + ew and ex < x0 + P and y0 < ey + eh and ey < y0 + P for ex, ey, ew, eh in exclude):
                     continue
                 t = w[y0:y0 + P, x0:x0 + P]
+                if float(t.std()) < 2.0:  # gradient from just outside a flat patch
+                    continue
                 pts.append((v, x0 + P / 2.0, y0 + P / 2.0, t.copy()))
         pts.sort(key=lambda p: -p[0])
         self.pts = pts[: self.max_points]
@@ -1001,7 +1011,7 @@ def track_clip(frames, bbox, abox, mode: str, args) -> dict:
 
     mode: global (whole-frame camera model), anchor (anchor for the shift, whole-frame model for zoom
     and roll and as the hand-off when the anchor is lost), none (fixed camera; an anchor, if given,
-    cancels shifts only, as before 1.4). Returns per-frame raw measurements; compensate() turns them
+    cancels shifts only, as the old tracker did). Returns per-frame raw measurements; compensate() turns them
     into scene positions.
     """
     ds = max(1, args.downscale)
@@ -1144,7 +1154,7 @@ def main() -> int:
     ap.add_argument("--camera", choices=["auto", "global", "anchor", "none"], default="auto",
                     help="camera compensation. global: whole-frame shift, zoom and roll; anchor: the --anchor-bbox shift with "
                          "the whole-frame zoom and roll, handing off to the whole-frame model when the anchor is lost; none: "
-                         "a fixed camera (with --anchor-bbox: its shift only, the pre-1.4 behaviour); auto (default): "
+                         "a fixed camera (with --anchor-bbox: its shift only, the old behaviour); auto (default): "
                          "anchor with --anchor-bbox, else global")
     ap.add_argument("--search", type=int, default=64, help="search radius in pixels around the predicted position (default 64)")
     ap.add_argument("--downscale", type=int, default=1, help="integer downscale for speed (default 1)")
@@ -1159,7 +1169,6 @@ def main() -> int:
     ap.add_argument("--csv", type=Path, help="also write per-frame samples as CSV")
     args = ap.parse_args()
 
-    np = rc.require_numpy()
     manifest, frames_meta, base = rc.load_manifest(args.manifest)
     bbox = rc.parse_bbox(args.bbox, "--bbox")
     if manifest.get("crop"):

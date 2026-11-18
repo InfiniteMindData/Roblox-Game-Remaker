@@ -496,7 +496,7 @@ def cam_clips(out_dir: Path) -> None:
     truth["clips"]["cam_pan_zoom.mp4"] = {"bbox": start_box(pz_cam(0), 600, gy), "speed": V, "start_s": t0, "zoom": [1.0, 1.35],
                                           "roll_deg": [0.0, 3.0], "what": "pan at 50%, zoom 1.00 to 1.35, roll 0 to 3 degrees"}
 
-    # 4. A flat grey pillar in front of the path (flat surfaces scored up to 7.8 before 1.4).
+    # 4. A flat grey pillar in front of the path (flat surfaces used to score up to 7.8).
     pillar = Image.new("RGBA", (30, 200), (90, 90, 90, 255))  # world x 675-705: hides the subject 0.61-0.92 s
     static = (750.0, gy - 40, 1.0, 0.0)
     write_clip(out_dir / "cam_occluder.mp4",

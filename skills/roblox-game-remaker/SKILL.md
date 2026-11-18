@@ -183,7 +183,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `remake_status.py remake --write` | Phase gates, open items, next action; writes `remake/STATUS.md` |
 | `ledger.py add-evidence / add-measurement / import / targets` | Ledger entries with automatic IDs and checks; any tool's measurements into the ledger; targets |
 | `config_check.py remake` | Config.luau values against their measurements; stale, unsourced and assumed values |
-| `find_mover.py frames/manifest.json` | Detect moving subjects (camera motion cancelled); suggest `--bbox` and `--anchor-bbox` |
+| `find_mover.py frames/manifest.json` | Detect moving subjects (camera shift, zoom and roll cancelled; the player under a follow camera); suggest `--bbox` and `--anchor-bbox` |
 | `frame_zoom.py frame.png --region x,y,w,h --mark x,y,w,h` | Zoomed crop with pixel rulers to read and confirm exact coordinates |
 | `pose_track.py frames/manifest.json --point hip=x,y ... --joint knee=hip,knee,foot --cycle foot.y` | Multi-point tracking: 2D joint angles, cycle period, keypose table draft |
 | `overlay.py blend\|diff\|checker\|wipe REF REC` / `overlay.py onion manifest.json` | Single-image alignment views; onion skin of a sequence |
@@ -193,7 +193,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `probe_video.py clip.mp4 --dupes` | FPS, variable frame rate, duplicate frames, effective update rate |
 | `extract_frames.py clip.mp4 --out frames/ --mode range --start 120 --end 180` | Exact frames with index and timestamp manifest (`all`, `every`, `range`, `times`, `scene`) |
 | `contact_sheet.py frames/manifest.json --out sheet.png` | Labeled grid of frames to review a sequence in one image |
-| `motion_track.py frames/manifest.json --bbox x,y,w,h --px-per-unit 31.5 --analyze jump` | Track a feature (`--scale-search` when it nears or recedes); fit jump apex, gravity and speed |
+| `motion_track.py frames/manifest.json --bbox x,y,w,h --px-per-unit 31.5 --analyze jump` | Track a feature with camera shift, zoom and roll removed and lost-subject checks (`--scale-search` when it nears or recedes); fit jump apex, gravity and speed |
 | `camera_solve.py vanishing\|size\|ground` | FOV, pitch, roll and height from marked lines or a known object; ground-plane homography that turns third-person tracks into studs |
 | `remake_calc.py jump --apex 7.2 --rise-time 0.38` | Unit, FOV, jump, acceleration, spring and frame-time conversions, with `--luau` output |
 | `fit_curve.py --track track.json --field x_px --luau` | Rank every template easing curve, a spring and an exponential approach against tracked samples; duration or spring parameters; says when fits are indistinguishable |
