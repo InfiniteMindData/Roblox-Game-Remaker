@@ -21,6 +21,15 @@ Writes into --out (created if missing):
     demo_menu_track.json   a tracked menu slide-in (Back Out, 0.35 s), motion_track format
     demo_build_jump.log    a build's harness log of a jump (apex 7.5, rise 0.39 s, fall 0.28 s)
     demo_sfx_ref.wav, demo_sfx_new.wav   a reference sound and an original replacement to tune
+  with --only camera, the camera and tracking cases of real gameplay footage (TRUTH["camera"]):
+    cam_zoom.mp4       follow camera with a sprint FOV kick (zoom 1.00 to 1.12) and a HUD
+    cam_follow.mp4     camera locked to the character (Roblox's default), 2.5 s, HUD
+    cam_pan_zoom.mp4   pan, zoom 1.00 to 1.35 and roll 0 to 3 degrees
+    cam_occluder.mp4   a flat grey pillar in front of the path
+    cam_lookalike.mp4  an identical look-alike crossing the subject
+    cam_small.mp4      a 10x20 px subject at 960x540, 30 fps, motion blur, CRF 32
+    cam_vfr.mkv        partial follow camera with a variable frame rate
+    the subject runs 16 studs/s from an instant start at 0.2 s (10 px per stud; 8 in cam_small)
   ground_truth.json the true values, so you can check what the tools measured
 
 Scale: 20 pixels per stud at the subject's depth. The clean clips are lossless FFV1.
@@ -372,6 +381,171 @@ def extras(out_dir: Path) -> None:
             w.writeframes((np.clip(x, -1, 1) * 32767).astype(np.int16).tobytes())
 
 
+# ----------------------------------------------------------------- camera group (hard cases)
+
+CAM = {"w": 640, "h": 360, "px_per_unit": 10.0, "speed": 16.0, "start_s": 0.2, "sprite_px": [20, 40], "ground_y": 700.0}
+
+
+def cam_world(seed: int = 5):
+    """A textured world (smooth noise like terrain, bricks and foliage), 2400 x 1000 px at zoom 1."""
+    rng = np.random.default_rng(seed)
+    small = rng.integers(0, 255, (1000 // 6 + 2, 2400 // 6 + 2, 3)).astype(np.uint8)
+    im = Image.fromarray(small).resize((2400, 1000), Image.BICUBIC)
+    return Image.fromarray((np.asarray(im).astype(np.float32) * 0.6 + 50).clip(0, 255).astype(np.uint8))
+
+
+def cam_sprite(phase: float, size=(20, 40), color=(230, 60, 40)) -> Image.Image:
+    """A blocky character whose legs swing with the run cycle (its appearance changes every frame)."""
+    import math
+
+    w, h = size
+    im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rectangle([w * 0.25, 0, w * 0.75, h * 0.25], fill=(250, 210, 160, 255))
+    d.rectangle([w * 0.2, h * 0.27, w * 0.8, h * 0.6], fill=color + (255,))
+    s = math.sin(phase) * w * 0.18
+    d.polygon([(w * 0.3, h * 0.6), (w * 0.48, h * 0.6), (w * 0.48 + s, h), (w * 0.3 + s, h)], fill=(40, 60, 200, 255))
+    d.polygon([(w * 0.52, h * 0.6), (w * 0.7, h * 0.6), (w * 0.7 - s, h), (w * 0.52 - s, h)], fill=(40, 60, 200, 255))
+    return im
+
+
+def cam_render(world: Image.Image, cam, objs, w: int, h: int, hud: bool = False):
+    """Render the world through a camera (cx, cy, zoom, roll_deg): screen = zoom * R(roll) (world - c) + centre.
+
+    objs: (world x, world y, RGBA sprite at zoom 1) placed at sub-pixel positions. hud adds a textured
+    screen-fixed panel and health bar in the top-left corner.
+    """
+    import math
+
+    cx, cy, z, roll = cam
+    c, s = math.cos(math.radians(roll)), math.sin(math.radians(roll))
+    a, b, d_, e = c / z, s / z, -s / z, c / z
+    img = world.transform((w, h), Image.AFFINE, (a, b, cx - a * w / 2 - b * h / 2, d_, e, cy - d_ * w / 2 - e * h / 2),
+                          resample=Image.BILINEAR)
+    for wx, wy, spr in objs:
+        sw, sh = max(1, round(spr.width * z)), max(1, round(spr.height * z))
+        s2 = spr.resize((sw, sh), Image.BILINEAR) if (sw, sh) != spr.size else spr
+        dx, dy = wx - cx, wy - cy
+        u = z * (c * dx - s * dy) + w / 2 - sw / 2
+        v = z * (s * dx + c * dy) + h / 2 - sh / 2
+        iu, iv = math.floor(u), math.floor(v)
+        pad = Image.new("RGBA", (sw + 2, sh + 2), (0, 0, 0, 0))
+        pad.paste(s2, (1, 1))
+        pad = pad.transform(pad.size, Image.AFFINE, (1, 0, -(u - iu), 0, 1, -(v - iv)), resample=Image.BILINEAR)
+        img.paste(pad, (iu - 1, iv - 1), pad)
+    out = np.asarray(img.convert("RGB")).copy()
+    if hud:
+        rng = np.random.default_rng(9)
+        out[10:70, 10:170] = (rng.random((60, 160, 3)) * 120 + 60).astype(np.uint8)  # minimap-like panel
+        out[78:90, 10:170] = (40, 40, 40)
+        out[80:88, 12:130] = (60, 220, 80)  # health bar
+    return out
+
+
+def cam_clips(out_dir: Path) -> None:
+    """Camera and tracking cases real gameplay footage has, each with exact ground truth (TRUTH["camera"])."""
+    import math
+
+    world = cam_world()
+    W, H, P, V, t0, gy = CAM["w"], CAM["h"], CAM["px_per_unit"], CAM["speed"], CAM["start_s"], CAM["ground_y"]
+    sp = {}
+
+    def spr(phase, size=(20, 40), color=(230, 60, 40)):
+        key = (round(phase % (2 * math.pi), 2), size, color)
+        if key not in sp:
+            sp[key] = cam_sprite(phase, size, color)
+        return sp[key]
+
+    def run_x(t):  # instant start (Roblox's default: full WalkSpeed on the first frame)
+        return 600 + V * P * max(0.0, t - t0)
+
+    truth = {**CAM, "clips": {}}
+
+    def start_box(cam, wx, wy, size=(20, 40)):
+        x, y, z, roll = cam
+        u, v = (wx - x) * z + W / 2, (wy - y) * z + H / 2
+        return [int(round(u - size[0] * z / 2)), int(round(v - size[1] * z / 2)), int(round(size[0] * z)), int(round(size[1] * z))]
+
+    # 1. Sprint FOV kick: the camera follows at 60% and zooms 1.00 -> 1.12 over 0.5 s as the run starts.
+    def zoom_cam(t):
+        tt = max(0.0, t - t0)
+        return (600 + 0.6 * (run_x(t) - 600) + 80, gy - 60, 1.0 + 0.12 * min(1.0, tt / 0.5), 0.0)
+
+    write_clip(out_dir / "cam_zoom.mp4", lambda t: cam_render(world, zoom_cam(t), [(run_x(t), gy, spr(t * 18))], W, H, hud=True),
+               [i / FPS for i in range(90)], h264_crf=20)
+    truth["clips"]["cam_zoom.mp4"] = {"bbox": start_box(zoom_cam(0), 600, gy), "speed": V, "start_s": t0, "zoom": [1.0, 1.12],
+                                      "what": "follow camera at 60% with a sprint FOV kick (zoom 1.00 to 1.12), HUD top-left"}
+
+    # 2. Roblox's default camera: locked to the character, which stays put on screen. 2.5 s, so a
+    #    background anchor on the left leaves the view.
+    def follow_cam(t):
+        return (run_x(t) + 60, gy - 60, 1.0, 0.0)
+
+    write_clip(out_dir / "cam_follow.mp4", lambda t: cam_render(world, follow_cam(t), [(run_x(t), gy, spr(t * 18))], W, H, hud=True),
+               [i / FPS for i in range(150)], h264_crf=20)
+    truth["clips"]["cam_follow.mp4"] = {"bbox": start_box(follow_cam(0), 600, gy), "speed": V, "start_s": t0,
+                                        "anchor_bbox": [300, 120, 40, 40], "anchor_leaves_view_s": round(t0 + 300 / (V * P), 3),
+                                        "what": "camera locked to the character, HUD top-left"}
+
+    # 3. Pan at 50% while zooming 1.00 -> 1.35 and rolling 0 -> 3 degrees.
+    def pz_cam(t):
+        return (600 + 0.5 * (run_x(t) - 600) + 80, gy - 60, 1.0 + 0.35 * t / 1.5, 3.0 * t / 1.5)
+
+    write_clip(out_dir / "cam_pan_zoom.mp4", lambda t: cam_render(world, pz_cam(t), [(run_x(t), gy, spr(t * 18))], W, H),
+               [i / FPS for i in range(90)], h264_crf=20)
+    truth["clips"]["cam_pan_zoom.mp4"] = {"bbox": start_box(pz_cam(0), 600, gy), "speed": V, "start_s": t0, "zoom": [1.0, 1.35],
+                                          "roll_deg": [0.0, 3.0], "what": "pan at 50%, zoom 1.00 to 1.35, roll 0 to 3 degrees"}
+
+    # 4. A flat grey pillar in front of the path (flat surfaces scored up to 7.8 before 1.4).
+    pillar = Image.new("RGBA", (30, 200), (90, 90, 90, 255))  # world x 675-705: hides the subject 0.61-0.92 s
+    static = (750.0, gy - 40, 1.0, 0.0)
+    write_clip(out_dir / "cam_occluder.mp4",
+               lambda t: cam_render(world, static, [(run_x(t), gy, spr(t * 18)), (690.0, gy, pillar)], W, H),
+               [i / FPS for i in range(80)], h264_crf=20)
+    truth["clips"]["cam_occluder.mp4"] = {"bbox": start_box(static, 600, gy), "speed": V, "start_s": t0,
+                                          "occluder_world_x": [675, 705], "what": "static camera, flat pillar in front of the path"}
+
+    # 5. An identical look-alike crossing the subject (3 px higher, running the other way at the same speed).
+    def la(t):
+        return [(720.0 - 10 * P * t, gy - 3, spr(0.0)), (600 + 10 * P * t, gy, spr(0.0))]  # they cross at 0.6 s
+
+    write_clip(out_dir / "cam_lookalike.mp4", lambda t: cam_render(world, static, la(t), W, H), [i / FPS for i in range(60)],
+               h264_crf=20)
+    truth["clips"]["cam_lookalike.mp4"] = {"bbox": start_box(static, 600, gy), "speed": 10.0, "start_s": 0.0,
+                                           "end_x_px": round(600 + 10 * P * 59 / FPS - 750 + W / 2, 2),
+                                           "what": "static camera, identical look-alike crossing"}
+
+    # 6. A small subject (10 x 20 px in a 960 x 540 frame, 30 fps, motion blur, heavy compression).
+    sw_, sh_, sfps = 960, 540, 30
+    small_cam = (700.0, gy, 1.0, 0.0)
+
+    def small(t):
+        acc = np.zeros((sh_, sw_, 3))
+        for k in range(4):
+            tk = t + (k / 3 - 0.5) / sfps * 0.5
+            acc += cam_render(world, small_cam, [(500 + V * 8 * max(0.0, tk - t0), gy, spr(tk * 18, (10, 20)))], sw_, sh_)
+        return np.clip(acc / 4 + 0.5, 0, 255).astype(np.uint8)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        for i in range(45):
+            Image.fromarray(small(i / sfps)).save(Path(tmp) / f"f{i:04d}.png")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", str(sfps), "-i", str(Path(tmp) / "f%04d.png"), "-c:v", "libx264",
+                        "-preset", "veryfast", "-crf", "32", "-pix_fmt", "yuv420p", str(out_dir / "cam_small.mp4")], check=True)
+    truth["clips"]["cam_small.mp4"] = {"bbox": [int(500 - 700 + sw_ / 2 - 5), int(sh_ / 2 - 10), 10, 20], "speed": V, "start_s": t0,
+                                       "px_per_unit": 8.0, "fps": sfps,
+                                       "what": "10x20 px subject at 960x540, 30 fps, motion blur, H.264 CRF 32"}
+
+    # 7. Variable frame rate (jitter, one frame in 12 dropped) under a partial follow camera.
+    def vfr_cam(t):
+        return (600 + 0.6 * (run_x(t) - 600) + 80, gy - 60, 1.0, 0.0)
+
+    write_clip(out_dir / "cam_vfr.mkv", lambda t: cam_render(world, vfr_cam(t), [(run_x(t), gy, spr(t * 18))], W, H),
+               vfr_times(90), vfr_expr="(N+floor(N/12)+0.3*sin(1.7*N))/(60*TB)", h264_crf=20)
+    truth["clips"]["cam_vfr.mkv"] = {"bbox": start_box(vfr_cam(0), 600, gy), "speed": V, "start_s": t0,
+                                     "what": "follow camera at 60%, variable frame rate (jitter, drops)"}
+    TRUTH["camera"] = truth
+
+
 CLIPS = {
     "jump": lambda out: jump_clip(out / "demo_jump.mkv"),
     "run": lambda out: run_clip(out / "demo_run.mkv"),
@@ -379,15 +553,16 @@ CLIPS = {
     "hud": hud,
     "degraded": degraded_clips,
     "extras": extras,
+    "camera": cam_clips,
 }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--only", help=f"comma-separated subset of: {', '.join(CLIPS)} (default: all but degraded and extras)")
+    ap.add_argument("--only", help=f"comma-separated subset of: {', '.join(CLIPS)} (default: all but degraded, extras and camera)")
     args = ap.parse_args()
-    names = [n.strip() for n in args.only.split(",")] if args.only else [n for n in CLIPS if n not in ("degraded", "extras")]
+    names = [n.strip() for n in args.only.split(",")] if args.only else [n for n in CLIPS if n not in ("degraded", "extras", "camera")]
     unknown = [n for n in names if n not in CLIPS]
     if unknown:
         print(f"error: unknown clip(s) {', '.join(unknown)}; choose from {', '.join(CLIPS)}", file=sys.stderr)

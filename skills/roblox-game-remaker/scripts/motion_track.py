@@ -464,6 +464,8 @@ class Tracker:
         if ys + hs > first.shape[0] or xs + ws > first.shape[1] or xs < 0 or ys < 0:
             rc.fail(f"bbox {bbox} lies outside the first frame")
         self.d, self.ws, self.hs = d, ws, hs
+        self.snap_v = None
+        self.beta = 0.5  # velocity smoothing: one odd frame does not drag the prediction along
         self.tmpl0 = first[ys:ys + hs, xs:xs + ws].astype("float32")
         self.tmpl_a = self.tmpl0.copy()
         self.r = max(2, search // d)
@@ -476,11 +478,26 @@ class Tracker:
         self.last_score = 1.0
         self.scale = 1.0                              # subject's own scale (camera zoom excluded)
         self.prev_img, self.prev_screen = first, self.q
-        self.innov, self.fbs, self.scores, self.vh = [], [], [], []
+        self.innov, self.fbs, self.scores, self.vh, self.lost_hist = [], [], [], [], []
         self.lost = None
         self.coast = 0
         self.cache: dict = {}
         self.info = {}
+
+    def _consistent_return(self, base: float) -> bool:
+        """The last three lost-state matches move steadily (not a stall) and trace back to the last position."""
+        if len(self.lost_hist) < 3 or not all(g for _, g in self.lost_hist[-3:]):
+            return False
+        (a, _), (b, _), (c, _) = self.lost_hist[-3:]
+        v1, v2 = (b[0] - a[0], b[1] - a[1]), (c[0] - b[0], c[1] - b[1])
+        if math.hypot(v2[0] - v1[0], v2[1] - v1[1]) > base or math.hypot(*v2) < 0.5:
+            return False
+        k = self.gap + 1
+        back = (c[0] - v2[0] * k, c[1] - v2[1] * k)
+        if math.hypot(back[0] - self.q[0], back[1] - self.q[1]) > base + 0.5 * k:
+            return False
+        self.snap_v = v2
+        return True
 
     def first(self):
         x, y = self.q
@@ -561,7 +578,7 @@ class Tracker:
         innov = min(math.hypot(cx - hx, cy - hy) for hx, hy in hyps)
         # Forward-backward: the patch found here, matched back into the previous frame, must land where
         # the subject was. Near-equal back peaks (an identical look-alike) count as agreement.
-        fb, fb_ok = None, True
+        fb, fb_ok, fb_base = None, True, 2.0
         if self.checks:
             pt = _patch(img, cx, cy, tw, th)
             back = _window(self.prev_img, *self.prev_screen, tw, th, max(3, min(self.r, max(tw, th) // 2)))
@@ -575,6 +592,7 @@ class Tracker:
                 step = math.hypot(sx, sy)
                 ux, uy = (sx / step, sy / step) if step > 0.5 else (0.0, 0.0)
                 base = max(2.0, 3.0 * self._typ(self.fbs, 0.5) + 1.0)
+                fb_base = base
                 fb_ok = False
                 for j, p_ in enumerate(pks):
                     ex = bx0 + p_[2] + tw / 2.0 - self.prev_screen[0]
@@ -599,22 +617,39 @@ class Tracker:
                 reason = "the match weakened and the position stalled while the motion continued"
             elif ambiguous and innov > max(0.4 * size, 6 * innov_typ + 2):
                 reason = "implausible motion with an ambiguous match"
+            elif moving and fb is not None and (fb > fb_base or ambiguous):
+                # A full reversal within a frame, with a doubtful match, is a switch to something else
+                # (a look-alike crossing), not a turn.
+                kk = self.gap + 1
+                vm = ((q_new[0] - self.q[0]) / kk, (q_new[1] - self.q[1]) / kk)
+                vl = math.hypot(*self.v)
+                if vl > 1.0 and math.hypot(*vm) > 1.0 and (vm[0] * self.v[0] + vm[1] * self.v[1]) < -0.5 * vl * math.hypot(*vm):
+                    reason = "the motion reversed within a frame on a doubtful match"
         reacquired = False
         if self.lost is not None:
             base = max(3.0, 4 * innov_typ + 2)
             # On the coasting path the gate widens as the coast gets longer; where it stopped, it does not.
             fits = math.hypot(cx - hyps[0][0], cy - hyps[0][1]) <= base + 0.5 * self.coast or \
                 (len(hyps) > 1 and math.hypot(cx - hyps[1][0], cy - hyps[1][1]) <= base)
-            if fits and score >= max(0.5 * self.min_score, score_typ - 0.3) and fb_ok:
+            good = score >= max(0.5 * self.min_score, score_typ - 0.3) and fb_ok
+            self.lost_hist.append((q_new, good))
+            if fits and good:
                 reason = None  # back on the predicted path (or where it stopped): resumed
+            elif self._consistent_return(base):
+                reason = None  # three frames of steady motion that lead back to where it was lost
             elif not fits and self.coast >= self.max_coast and score >= self.min_score and not weak:
                 reacquired = True  # re-lock on appearance alone; the caller flags it
             else:
                 reason = self.lost
         if reason is None:
-            if self.n_acc >= 1 and not reacquired:
+            if self.snap_v is not None:
+                self.v, self.snap_v = self.snap_v, None
+                self.vh.append(self.v)
+            elif self.n_acc >= 1 and not reacquired:
                 kk = self.gap + 1
-                self.v = ((q_new[0] - self.q[0]) / kk, (q_new[1] - self.q[1]) / kk)
+                vm = ((q_new[0] - self.q[0]) / kk, (q_new[1] - self.q[1]) / kk)
+                b_ = self.beta if self.n_acc >= 3 else 1.0
+                self.v = (self.v[0] + b_ * (vm[0] - self.v[0]), self.v[1] + b_ * (vm[1] - self.v[1]))
                 self.vh.append(self.v)
             else:
                 self.v = (0.0, 0.0)
@@ -624,7 +659,7 @@ class Tracker:
                 if fb is not None:
                     self.fbs.append(fb)
                 self.scores.append(score)
-            self.lost, self.coast = None, 0
+            self.lost, self.coast, self.lost_hist = None, 0, []
             self.scale = f
             if self.adapt and score >= max(0.7, self.min_score) and not ambiguous:
                 pt = _patch(img, cx, cy, tw, th)
@@ -993,9 +1028,12 @@ def track_clip(frames, bbox, abox, mode: str, args) -> dict:
         a, a_in = None, True
         if anc:
             a = anc.step(img, S)
-            asz = (sim_scale(S) if cam else a[3]) * 1.0
-            ax0, ay0 = a[0] - abox[2] * asz / 2, a[1] - abox[3] * asz / 2
-            a_in = ax0 >= 0 and ay0 >= 0 and ax0 + abox[2] * asz <= W and ay0 + abox[3] * asz <= H
+            asz = sim_scale(S) if cam else a[3]
+            # In view: where the whole-frame model puts the anchor (a match clamped at the frame edge would
+            # still look inside), with a 2 px margin.
+            ac = sim_apply(S, rows[0]["a"][0], rows[0]["a"][1]) if cinfo and cinfo["ok"] else a[:2]
+            ax0, ay0 = ac[0] - abox[2] * asz / 2, ac[1] - abox[3] * asz / 2
+            a_in = ax0 >= 2 and ay0 >= 2 and ax0 + abox[2] * asz <= W - 2 and ay0 + abox[3] * asz <= H - 2
         # The subject's prediction uses the best camera estimate available this frame.
         S_sub = S
         if anc and (cam is None or not cinfo["ok"]) and a[2] >= args.min_score and a_in:
@@ -1045,9 +1083,18 @@ def compensate(raw: dict, mode: str, abox, min_score: float) -> dict:
             if cam is None:
                 a_sc = [r["a"][3] for r in rows]
                 a_scale_span = max(a_sc) / min(a_sc)
+            prev_dis = None
             for i, r in enumerate(rows):
                 a = r["a"]
                 good = a[2] >= min_score and r["a_in"]
+                if cam is not None and r["cam_ok"]:
+                    # The anchor and the whole-frame model disagree slowly with parallax; a sudden jump in
+                    # their disagreement means the anchor match slipped: hand off there.
+                    gx, gy = sim_apply(Sg[i], a0[0], a0[1])
+                    dis = (a[0] - gx, a[1] - gy)
+                    if prev_dis is not None and math.hypot(dis[0] - prev_dis[0], dis[1] - prev_dis[1]) > 1.5:
+                        good = False
+                    prev_dis = dis
                 if handoff is None and i and not good and cam is not None and r["cam_ok"]:
                     handoff = i
                 if handoff is not None and i >= handoff:
