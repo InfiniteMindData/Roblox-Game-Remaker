@@ -96,7 +96,7 @@ have.
    Simulation logs report `ground_speed[STATE]` per grounded state (forward and backward walk
    separately); plain `ground_speed` is the median over all of them.
 6. **Capture shots:** `screen_capture` with the shot's camera position and look-at. For an exact
-   FOV and hidden UI, first run the snippet from `studio_snippets.py apply-shot remake/shots.json --id SHOT-03`
+   projection, FOV and the shot's GUI visibility policy, first run the snippet from `studio_snippets.py apply-shot remake/shots.json --id SHOT-03`
    with `execute_luau` (Client, during play), then capture. `studio_snippets.py shots` generates the
    `Shots` module for the F7/F8 hotkeys.
 7. **Compare:** save the capture under `remake/captures/`, then run `scripts/visual_compare.py`.

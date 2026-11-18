@@ -187,7 +187,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `frame_zoom.py frame.png --region x,y,w,h --mark x,y,w,h` | Zoomed crop with pixel rulers to read and confirm exact coordinates |
 | `pose_track.py frames/manifest.json --point hip=x,y ... --joint knee=hip,knee,foot --cycle foot.y` | Multi-point tracking: 2D joint angles, cycle period, keypose table draft |
 | `overlay.py blend\|diff\|checker\|wipe REF REC` / `overlay.py onion manifest.json` | Single-image alignment views; onion skin of a sequence |
-| `studio_snippets.py greybox\|shots\|apply-shot\|extract-log\|inputs\|ui-rects` | Generate greybox and shot Luau for Studio/MCP; clean Output logs; binding tables from InputProbe; dump live GUI rectangles for UI measurement |
+| `studio_snippets.py greybox\|shots\|apply-shot\|extract-log\|inputs\|ui-rects` | Generate greybox and projection/GUI-policy shot Luau for Studio/MCP; clean Output logs; binding tables from InputProbe; dump live GUI rectangles for UI measurement |
 | `preset.py list\|show\|apply NAME --config Config.luau` | Genre starting values, written as `ASSUMED` and never over measured keys |
 | `breakdown_init.py PROJECT --game "Name"` | Create `remake/` from templates (never overwrites) |
 | `probe_video.py clip.mp4 --dupes` | FPS, variable frame rate, duplicate frames, effective update rate |
@@ -204,10 +204,10 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `audio_onsets.py clip.mp4` | Sound onset times mapped to video frames |
 | `audio_compare.py analyze\|compare` | Duration, loudness envelope, dominant frequency and brightness of a sound; score an original or licensed replacement against it, with Roblox tuning hints |
 | `breakdown_check.py remake --strict` | Validate breakdown coverage, evidence links and statuses |
-| `measure_compare.py output.log --targets remake/targets.json` | Compare in-game measurements (movement, jumps, input latency) with reference targets; `--subject p1 --interval startup=attack..active` for `SimRecorder` logs, judged in frames |
+| `measure_compare.py output.log --targets remake/targets.json` | Compare in-game measurements (movement, jumps, recorded elapsed input latency) with reference targets; `--subject p1 --interval startup=attack..active` for `SimRecorder` logs, judged in frames |
 | `clip_compare.py ref-track.json rec.log --targets remake/targets.json --plot clip.png` | Align a build recording (track or harness log) with the reference clip; position error over time, event offsets, overlay plot |
 | `fidelity_report.py remake --diff-log --label "it7: exposure"` | Score every shot, metric and clip against tolerance; history, scorecard and diff-log entry; exit 1 on a regression |
-| `blender_roblox_export.py` | Run inside Blender: check Roblox mesh and rig limits, then export FBX or glTF |
+| `blender_roblox_export.py` | Run inside Blender: check mesh/rig limits; select a single FBX action/range (Prepared, not run); or export glTF |
 
 Rehearse the pipeline, or check an install, with synthetic footage that has known answers:
 `bash examples/demo/run_demo.sh /tmp/remake-demo`. The walkthroughs in `examples/` show the

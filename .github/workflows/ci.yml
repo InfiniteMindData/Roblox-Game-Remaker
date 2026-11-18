@@ -70,16 +70,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ffmpeg and Python dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          python -m pip install -r requirements-dev.txt
       - uses: actions/cache@v4
         with:
-          path: ~/.cargo/bin
-          key: luau-tools-${{ runner.os }}-stylua-selene-lune-rojo-v1
-      - name: Install Luau tools
+          path: ~/.local/bin
+          key: luau-linux-stylua-2.6.0-selene-0.32.0-lune-0.11.1-rojo-7.7.1
+      - name: Install pinned Luau release binaries
         run: |
-          command -v stylua >/dev/null || cargo install --locked stylua --features luau
-          command -v selene >/dev/null || cargo install --locked selene
-          command -v lune >/dev/null || cargo install --locked lune
-          command -v rojo >/dev/null || cargo install --locked rojo
+          mkdir -p "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          command -v stylua >/dev/null || curl -fsSL https://github.com/JohnnyMorganz/StyLua/releases/download/v2.6.0/stylua-linux-x86_64.zip -o /tmp/stylua.zip
+          command -v selene >/dev/null || curl -fsSL https://github.com/Kampfkarren/selene/releases/download/0.32.0/selene-0.32.0-linux.zip -o /tmp/selene.zip
+          command -v lune >/dev/null || curl -fsSL https://github.com/lune-org/lune/releases/download/v0.11.1/lune-0.11.1-linux-x86_64.zip -o /tmp/lune.zip
+          command -v rojo >/dev/null || curl -fsSL https://github.com/rojo-rbx/rojo/releases/download/v7.7.1/rojo-7.7.1-linux-x86_64.zip -o /tmp/rojo.zip
+          for tool in stylua selene lune rojo; do
+            if ! command -v "$tool" >/dev/null; then
+              unzip -oq "/tmp/$tool.zip" -d "$HOME/.local/bin"
+              chmod +x "$HOME/.local/bin/$tool"
+            fi
+            "$tool" --version
+          done
       - name: StyLua
         working-directory: skills/roblox-game-remaker/assets/rojo-template
         run: stylua --check src tests
@@ -92,3 +109,10 @@ jobs:
       - name: Rojo build
         working-directory: skills/roblox-game-remaker/assets/rojo-template
         run: rojo build default.project.json -o "$RUNNER_TEMP/remake.rbxlx"
+      - name: Python and Luau integration tests (no tool-based skips)
+        run: |
+          command -v python && command -v lune && command -v selene && command -v stylua && command -v rojo
+          python -m unittest discover -s tests -v
+      - name: Demo pipeline (Linux)
+        working-directory: skills/roblox-game-remaker
+        run: bash examples/demo/run_demo.sh "$RUNNER_TEMP/demo"

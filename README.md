@@ -45,9 +45,9 @@ research → measure → document → translate → build → compare → fix
 | `audio_onsets.py` | Sound onsets mapped to video frames |
 | `audio_compare.py` | Duration, loudness envelope, dominant frequency and brightness of a sound; score a replacement against it with Roblox tuning hints |
 | `breakdown_init.py` / `breakdown_check.py` | Create and validate the evidence-backed breakdown |
-| `measure_compare.py` | Compare in-game motion logs with reference targets |
+| `measure_compare.py` | Compare in-game motion logs and recorded elapsed input-response time with targets |
 | `clip_compare.py` | Compare a build recording or harness log with the reference clip over time: aligned position error, event offsets, overlay plot |
-| `blender_roblox_export.py` | Check Roblox mesh and rig limits in Blender, then export |
+| `blender_roblox_export.py` | Check Blender mesh/rig limits; select a single FBX action and frame range (Prepared, not run) |
 | `doctor.py` | Report which tools are available |
 | `remake_status.py` | Phase gates, open items, next action; writes `STATUS.md` |
 | `fidelity_report.py` | Score every shot, metric and clip against tolerance each iteration; history, scorecard, diff-log entry; exit 1 on a regression |
@@ -56,7 +56,7 @@ research → measure → document → translate → build → compare → fix
 | `find_mover.py` / `frame_zoom.py` | Detect moving subjects and suggest tracking boxes; zoomed crops with pixel rulers |
 | `pose_track.py` | Multi-point tracking: 2D joint angles, cycle period, keypose table |
 | `overlay.py` | Blend, diff, checker, wipe and onion-skin views |
-| `studio_snippets.py` | Greybox and shot Luau for Studio/MCP, Output log cleanup, binding tables |
+| `studio_snippets.py` | Greybox and projection/GUI-policy shot Luau for Studio/MCP, log cleanup, bindings |
 | `preset.py` | Genre starting values, always labeled ASSUMED |
 
 - **A Rojo-ready Luau template** (`assets/rojo-template/`): evidence-tagged `Config`, a

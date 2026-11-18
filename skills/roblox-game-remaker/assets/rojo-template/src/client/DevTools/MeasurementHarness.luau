@@ -11,11 +11,13 @@
 
 	Input response time (Config.DevTools.MeasureLatency = true, or Workspace attribute
 	RemakeMeasureLatency): for each press of a key in Config.DevTools.LatencyKeys, count rendered frames
-	(RunService.PreRender) from the input to the first frame whose character position, velocity or
-	Humanoid state differs from the moment of the press:
+	(RunService.PreRender) from an isolated input after 150 ms still/grounded to an action-consistent response.
+	W/A/S/D require grounded displacement and velocity along the camera-relative probed direction;
+	Space/ButtonA require upward velocity in Jumping state. Unsupported/overlapping inputs are skipped:
 	  REMAKE_MEASURE {"k":"l","t":1.234,"in":"Space","f":2,"fd":0.0167,"dt":0.0251}
 	f = frames (-1 = no change within LatencyTimeout), fd = frame duration at the change, dt = seconds by
-	os.clock. This is engine latency inside Studio; it excludes the display and the capture chain.
+	os.clock. This is action-consistent response timing, not proof of causality; external forces can confound it.
+	It excludes the display and capture chain. Use default camera-relative controls in a quiet test scene.
 
 	Copy the Output (or MCP get_console_output) to remake/logs/run-NN.log, then:
 	  python scripts/measure_compare.py remake/logs/run-NN.log --targets remake/targets.json
@@ -28,6 +30,9 @@ local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local InputSampler = require(script.Parent.Parent:WaitForChild("InputSampler"))
+local LatencyProbe = require(
+	game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Remake"):WaitForChild("LatencyProbe")
+)
 
 local MeasurementHarness = {}
 
@@ -54,8 +59,9 @@ type Press = {
 	frame: number,
 	clock: number,
 	pos: Vector3,
-	vel: Vector3,
-	state: Enum.HumanoidStateType,
+	action: string,
+	direction: Vector3,
+	root: BasePart,
 }
 
 -- Input response time: rendered frames from a watched key press to the first frame that shows a change.
@@ -72,24 +78,81 @@ local function startLatency(
 	local timeout = dev.LatencyTimeout or 1
 	local frame = 0
 	local pending: { Press } = {}
+	local stillTime = 0
+	local baselineRoot: BasePart? = nil
+	local function grounded(humanoid: Humanoid): boolean
+		local state = humanoid:GetState()
+		return humanoid.FloorMaterial ~= Enum.Material.Air
+			and (
+				state == Enum.HumanoidStateType.Running
+				or state == Enum.HumanoidStateType.RunningNoPhysics
+				or state == Enum.HumanoidStateType.Landed
+			)
+	end
+	local function skip(key: string, reason: string)
+		emit({ k = "e", t = round(os.clock() - t0, 4), n = "latency_skipped", key = key, reason = reason })
+	end
 	local conns: { RBXScriptConnection } = {}
 	table.insert(
 		conns,
 		UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
-			if processed or not watch[input.KeyCode.Name] then
+			if processed then
+				return
+			end
+			local action = LatencyProbe.action(input.KeyCode.Name)
+			if #pending > 0 and (action or watch[input.KeyCode.Name]) then
+				for _, press in pending do
+					skip(press.key, "overlapping_input")
+				end
+				table.clear(pending)
+				stillTime = 0
+				return
+			end
+			if not watch[input.KeyCode.Name] then
 				return
 			end
 			local humanoid, root = rig()
-			if not (humanoid and root) then
+			if not (action and humanoid and root) then
+				skip(input.KeyCode.Name, "unsupported_action_or_missing_rig")
 				return
 			end
+			if
+				root ~= baselineRoot
+				or not LatencyProbe.ready(
+					stillTime,
+					root.AssemblyLinearVelocity.Magnitude,
+					humanoid.MoveDirection.Magnitude,
+					grounded(humanoid)
+				)
+			then
+				skip(input.KeyCode.Name, "baseline_not_still_grounded")
+				return
+			end
+			local direction = Vector3.zero
+			if action ~= "jump" then
+				local camera = Workspace.CurrentCamera
+				if not camera then
+					return
+				end
+				local axis = if action == "forward" or action == "back"
+					then camera.CFrame.LookVector
+					else camera.CFrame.RightVector
+				direction = Vector3.new(axis.X, 0, axis.Z)
+				if direction.Magnitude < 1e-3 then
+					skip(input.KeyCode.Name, "ambiguous_camera_direction")
+					return
+				end
+				direction = direction.Unit * (if action == "back" or action == "left" then -1 else 1)
+			end
+			stillTime = 0
 			table.insert(pending, {
 				key = input.KeyCode.Name,
 				frame = frame,
 				clock = os.clock(),
 				pos = root.Position,
-				vel = root.AssemblyLinearVelocity,
-				state = humanoid:GetState(),
+				action = action,
+				direction = direction,
+				root = root,
 			})
 		end)
 	)
@@ -97,18 +160,38 @@ local function startLatency(
 		conns,
 		RunService.PreRender:Connect(function(deltaTime: number)
 			frame += 1
-			if #pending == 0 then
-				return
-			end
 			local humanoid, root = rig()
+			if root ~= baselineRoot then
+				stillTime = 0
+				baselineRoot = root
+			end
+			if
+				humanoid
+				and root
+				and LatencyProbe.ready(
+					0.15,
+					root.AssemblyLinearVelocity.Magnitude,
+					humanoid.MoveDirection.Magnitude,
+					grounded(humanoid)
+				)
+			then
+				stillTime += deltaTime
+			else
+				stillTime = 0
+			end
 			local now = os.clock()
 			for i = #pending, 1, -1 do
 				local p = pending[i]
 				local changed = false
-				if humanoid and root then
-					changed = (root.Position - p.pos).Magnitude > 0.01
-						or (root.AssemblyLinearVelocity - p.vel).Magnitude > 0.5
-						or humanoid:GetState() ~= p.state
+				if humanoid and root and root == p.root then
+					changed = LatencyProbe.responded(
+						p.action,
+						(root.Position - p.pos):Dot(p.direction),
+						root.AssemblyLinearVelocity:Dot(p.direction),
+						root.AssemblyLinearVelocity.Y,
+						humanoid:GetState() == Enum.HumanoidStateType.Jumping,
+						grounded(humanoid)
+					)
 				end
 				if changed or now - p.clock > timeout then
 					emit({
