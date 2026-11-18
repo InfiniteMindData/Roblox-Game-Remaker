@@ -15,7 +15,7 @@ compatibility: >-
   ffmpeg and ffprobe. Optional: Roblox Studio (built-in MCP server), Rojo, Lune, StyLua, Selene,
   Blender 4.x. Web research needs network access.
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   roblox-docs-snapshot: "Roblox/creator-docs 2026-11-03"
 ---
 
@@ -180,8 +180,6 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `extract_frames.py clip.mp4 --out frames/ --mode range --start 120 --end 180` | Exact frames with index and timestamp manifest (`all`, `every`, `range`, `times`, `scene`) |
 | `contact_sheet.py frames/manifest.json --out sheet.png` | Labeled grid of frames to review a sequence in one image |
 | `motion_track.py frames/manifest.json --bbox x,y,w,h --px-per-unit 31.5 --analyze jump` | Track a feature with camera shift, zoom and roll removed and lost-subject checks (`--scale-search` when it nears or recedes); fit jump apex, gravity and speed |
-| `camera_solve.py vanishing\|size\|ground` | FOV, pitch, roll and height from marked lines or a known object; ground-plane homography that turns third-person tracks into studs |
-| `motion_track.py frames/manifest.json --bbox x,y,w,h --px-per-unit 31.5 --analyze jump` | Track a feature (`--scale-search` when it nears or recedes); fit jump apex, gravity and speed |
 | `camera_solve.py vanishing\|size\|ground` | FOV, pitch, roll and height from marked lines or a known object; ground-plane homography that turns third-person tracks into studs; `--viewport` for letterboxes |
 | `remake_calc.py jump --apex 7.2 --rise-time 0.38` | Unit, FOV, jump, acceleration, spring and frame-time conversions, with `--luau` output |
 | `fit_curve.py --track track.json --field x_px --luau` | Rank every template easing curve, a spring and an exponential approach against tracked samples; duration or spring parameters; says when fits are indistinguishable or none matches |
@@ -192,10 +190,8 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `audio_onsets.py clip.mp4` | Sound onset times mapped to video frames |
 | `audio_compare.py analyze\|compare` | Duration, loudness envelope, dominant frequency and brightness of a sound; score an original or licensed replacement against it, with Roblox tuning hints |
 | `breakdown_check.py remake --strict` | Validate breakdown coverage, evidence links and statuses |
-| `measure_compare.py output.log --targets remake/targets.json` | Compare in-game measurements (movement, jumps, input latency) with reference targets; `--subject p1 --interval startup=attack..active` for `SimRecorder` logs, judged in frames |
+| `measure_compare.py output.log --targets remake/targets.json` | Compare movement, jumps and recorded elapsed input latency with targets per trial; missing targets fail; `--subject p1 --interval startup=attack..active` for `SimRecorder` logs, judged in frames |
 | `clip_compare.py ref-track.json rec.log --targets remake/targets.json --plot clip.png` | Align a build recording (track or harness log) with the reference clip; position error along and off the path, event offsets, overlay plot |
-| `measure_compare.py output.log --targets remake/targets.json` | Compare in-game measurements (movement, jumps, recorded elapsed input latency) with reference targets; `--subject p1 --interval startup=attack..active` for `SimRecorder` logs, judged in frames |
-| `clip_compare.py ref-track.json rec.log --targets remake/targets.json --plot clip.png` | Align a build recording (track or harness log) with the reference clip; position error over time, event offsets, overlay plot |
 | `fidelity_report.py remake --diff-log --label "it7: exposure"` | Score every shot, metric and clip against tolerance; history, scorecard and diff-log entry; exit 1 on a regression |
 | `blender_roblox_export.py` | Run inside Blender: check mesh/rig limits; select a single FBX action/range (Prepared, not run); or export glTF |
 
