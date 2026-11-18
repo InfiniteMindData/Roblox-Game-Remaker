@@ -1,8 +1,11 @@
 """Release documentation and metadata consistency checks."""
 import collections
+import json
 import re
 import unittest
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -18,3 +21,16 @@ class ReleaseDocumentationTests(unittest.TestCase):
                 self.assertEqual({name: count for name, count in counts.items() if count != 1}, {})
                 for name in ("measure_compare.py", "clip_compare.py", "blender_roblox_export.py"):
                     self.assertEqual(counts[name], 1)
+
+    def test_current_release_versions_agree(self):
+        skill = (ROOT / "skills/roblox-game-remaker/SKILL.md").read_text(encoding="utf-8")
+        frontmatter = yaml.safe_load(skill.split("---", 2)[1])
+        version = frontmatter["metadata"]["version"]
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
+        marketplace = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text(encoding="utf-8"))
+        plugin = next(p for p in marketplace["plugins"] if p["name"] == frontmatter["name"])
+        self.assertEqual(plugin["version"], version)
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        latest = re.search(r"^## (\d+\.\d+\.\d+) — ", changelog, re.MULTILINE)
+        self.assertIsNotNone(latest)
+        self.assertEqual(latest.group(1), version)

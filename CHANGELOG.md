@@ -1,5 +1,67 @@
 # Changelog
 
+## 1.4.0 — 2026-11-18
+
+More reliable measurements, camera-aware tracking, and a first session that keeps the installed
+skill separate from the user's project. Checks now preserve missing, failed and unverified
+results instead of turning them into passes.
+
+**Behavior change:** `measure_compare.py` judges every trial by default. Targets that relied on
+the mean need `"aggregate": "mean"`; `min_fraction` and `min_trials` set explicit acceptance
+rules. Every target is accounted for, including missing and unknown metrics. A run that never
+reaches steady speed withholds `ground_speed` and `accel_t90` and warns.
+
+- `motion_track.py` and `find_mover.py` model whole-frame camera shift, zoom and roll through
+  keyframes, robust to the subject and HUD. `--camera auto|global|anchor|none` selects the
+  tracking mode; a slipping or off-screen `--anchor-bbox` hands off to the camera model.
+  Per-frame loss checks, coasting, re-acquisition and a slowly updated template expose lost,
+  ambiguous and recovered samples. `find_mover` ranks a probable player under a follow camera
+  ahead of HUD elements. Unremovable zoom warns and marks the track unreliable; normalized
+  correlation stays in [-1, 1] and flat windows score zero.
+- Video probing and tracking stream frames rather than holding whole clips in memory.
+  `make_demo_footage.py --only camera` adds synthetic FOV kick, follow camera, pan/zoom/roll,
+  occluder, look-alike, small-subject and variable-frame-rate clips with ground truth.
+- `visual_compare.py` fails thresholds whose metrics were not computed. Masks apply to SSIM
+  and edges; `local_ssim` and `--fail-under-local-ssim` catch small changed regions.
+  Batch results retain each shot's thresholds. `clip_compare.py` judges off-path error and
+  fails an event present in only one clip when an event tolerance is set.
+- `fidelity_report.py` keeps failed batches, shots and clips failed, carries thresholds with
+  results, keys clips by full reference path, and lists targeted metrics that were never
+  observed. `--fail-on-fail` exits 1 on failed or missing results.
+- `remake_calc.py jump` converts meters, centimeters and feet to studs before printing Roblox
+  or Luau values; unknown units produce no Roblox values. Acceleration calculations warn on
+  contradictory `--t90` and `--time-to-top`.
+- `audio_onsets.py` and `audio_compare.py` honor the audio stream start offset; onsets map to
+  real frame timestamps in variable-frame-rate footage and warn on an `--fps` override.
+  Hop/window sizes are validated, `peak_dbfs` is the true sample peak (the old measure is
+  `envelope_peak_dbfs`), and the loudness gate no longer drops onsets because of hop phase.
+- `camera_solve.py ground` reports camera uncertainty and worst case; `--viewport` handles
+  letterboxes and pillarboxes. A third line set that stays parallel in the image is skipped.
+  `fit_curve.py` flags systematic residuals, widens uncertainty for model mismatch and
+  indistinguishable rival curves, and retains `uncertainty_conditional`. `event_stats.py`
+  uses source-frame spacing for sparse-frame quantization. `ui_measure.py --compare` uses
+  the reference's scale rule and anchors across aspect changes.
+- The Luau template keeps zero and fractional air steering finite. Shot capture preserves
+  HUD/GUI policy and the complete camera projection state. Input latency uses recorded
+  elapsed seconds, with a still baseline and action-specific probes, rather than inferring
+  seconds from a nominal frame duration.
+- `blender_roblox_export.py` prepares an explicit single FBX action and frame range, with
+  NLA/all-actions export disabled; glTF is unchanged. **Prepared, not run in Blender.**
+- Install recipes separate `SKILL_ROOT` from `PROJECT_ROOT`, bootstrap project dependencies,
+  and initialize first-session status. Scoped provisional consent persists who, when, why and
+  an input fingerprint; measured mode ignores it, and assumptions never become measurements.
+  Automatic Config discovery rejects bundled and ambiguous candidates. Clip-only requests get
+  a feasibility plan before implementation.
+- Evals distinguish regex wording lint from local-artifact outcome grading and add fabrication
+  regressions. Animation generation, Highlight slot accounting and `PreRender` guidance are
+  refreshed, and platform coverage distinguishes verified from unverified paths.
+- CI runs Python/Luau integrations with both toolchains present and the demo on Linux as well
+  as Windows. Tool tables are deduplicated after the merges without losing the combined
+  capabilities.
+
+No Roblox Studio or Blender session was run for this release. Agent evals were not run; the
+eval changes do not establish a measured improvement in agent performance.
+
 ## 1.3.0 — 2026-11-11
 
 UI layout verification, end to end. Found by running the whole workflow in Studio on a menu
