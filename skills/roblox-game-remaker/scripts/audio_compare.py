@@ -5,7 +5,8 @@ Features (numpy FFT; audio decoded to mono by ffmpeg, through audio_onsets.decod
   duration        active length: from the onset (refined to the sample) until a 2 ms running
                   RMS stays below max(peak - 40 dB, noise floor + 10 dB)
   envelope        RMS loudness in dBFS per hop (default 5.8 ms at 22050 Hz)
-  level           RMS level over the active part, and the peak, in dBFS
+  level           RMS level over the active part (level_dbfs); peak_dbfs is the true sample
+                  peak; envelope_peak_dbfs the loudest envelope frame (RMS, what thresholds use)
   dominant        strongest frequency per frame (parabolic peak interpolation), its median over
                   the active part, and its spread in cents
   centroid        power-weighted spectral centroid per frame (bins within 60 dB of the frame's
@@ -40,7 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import remake_common as rc  # noqa: E402
-from audio_onsets import decode  # noqa: E402
+from audio_onsets import audio_start_offset, check_params, decode  # noqa: E402
 
 TOOL = "audio_compare"
 SCHEMA = 1
@@ -49,6 +50,7 @@ DEFAULT_TOL = {"level_db": 1.5, "duration_pct": 10.0, "envelope_db": 3.0, "pitch
 
 def features(x, rate: int, win: int, hop: int) -> dict:
     np = rc.require_numpy()
+    check_params(rate, hop, win)
     ewin = min(win, 4 * hop)  # short window for the loudness envelope; long window for frequencies
     if len(x) < win + hop:
         rc.fail("the segment is too short to analyze; widen --start/--end", rc.EXIT_FAIL)
@@ -110,7 +112,7 @@ def features(x, rate: int, win: int, hop: int) -> dict:
     return {
         "rate": rate, "hop_s": hop / rate, "window_s": win / rate, "envelope_window_s": ewin / rate,
         "onset_s": onset, "end_s": end, "duration_s": end - onset,
-        "peak_dbfs": peak_db, "level_dbfs": level, "floor_dbfs": floor_db, "threshold_dbfs": thr,
+        "peak_dbfs": 20 * math.log10(max(float(np.abs(x).max()), 1e-10)), "envelope_peak_dbfs": peak_db, "level_dbfs": level, "floor_dbfs": floor_db, "threshold_dbfs": thr,
         "dominant_hz_median": med, "dominant_spread_cents": spread,
         "centroid_hz": float((cent * w_e).sum() / max(float(w_e.sum()), 1e-30)),
         "_env": env, "_t": centers / rate, "_active": (a0, a1), "_dom": dom, "_cent": cent,
@@ -138,7 +140,7 @@ def load(path: Path, start, end, rate, win, hop):
 
 def cmd_analyze(args) -> dict:
     f = load(args.media, args.start, args.end, args.rate, args.window, args.hop)
-    off = args.start or 0.0
+    off, _ = audio_start_offset(args.media, args.start)  # times on the video's timeline, like audio_onsets
     hop = f["hop_s"]
     method = (f"audio_compare analyze {args.media.name} [{off:.3f}s..{args.end if args.end is not None else 'end'}]: mono {args.rate} Hz, "
               f"{args.window}-sample Hann window, hop {hop * 1000:.1f} ms; active = above max(peak - 40 dB, floor + 10 dB)")
@@ -173,7 +175,7 @@ def cmd_compare(args) -> dict:
     u = np.linspace(0, 1, 101)
     e_ref = np.interp(ref["onset_s"] + u * ref["duration_s"], ref["_t"], ref["_env"])
     e_rep = np.interp(rep["onset_s"] + u * rep["duration_s"], rep["_t"], rep["_env"]) - level
-    floor = max(ref["peak_dbfs"] - 60, ref["floor_dbfs"])
+    floor = max(ref["envelope_peak_dbfs"] - 60, ref["floor_dbfs"])
     shape = float(np.sqrt(((np.maximum(e_rep, floor) - np.maximum(e_ref, floor)) ** 2).mean()))
     hop = ref["hop_s"]
     span = max(ref["duration_s"], rep["duration_s"])
@@ -216,7 +218,8 @@ def cmd_compare(args) -> dict:
         (cents, tol["pitch_cents"]), ((cratio - 1) * 100, tol["centroid_pct"]))) / 5)
     return {"mode": "compare", "reference": str(args.reference), "replacement": str(args.replacement),
             "segments": {"reference": [args.ref_start, args.ref_end], "replacement": [args.rep_start, args.rep_end]},
-            "reference_features": public(ref, args.ref_start or 0.0), "replacement_features": public(rep, args.rep_start or 0.0),
+            "reference_features": public(ref, audio_start_offset(args.reference, args.ref_start)[0]),
+            "replacement_features": public(rep, audio_start_offset(args.replacement, args.rep_start)[0]),
             "comparison": {k: v for k, (v, _) in checks.items()}, "pass": {k: ok for k, (_, ok) in checks.items()},
             "tolerances": tol, "failures": failures, "score": round(score, 1), "hints": hints,
             "method": (f"audio_compare: onsets aligned (refined to the sample); levels as RMS over the active parts; envelope shape "

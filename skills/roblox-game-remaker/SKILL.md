@@ -194,10 +194,10 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `extract_frames.py clip.mp4 --out frames/ --mode range --start 120 --end 180` | Exact frames with index and timestamp manifest (`all`, `every`, `range`, `times`, `scene`) |
 | `contact_sheet.py frames/manifest.json --out sheet.png` | Labeled grid of frames to review a sequence in one image |
 | `motion_track.py frames/manifest.json --bbox x,y,w,h --px-per-unit 31.5 --analyze jump` | Track a feature (`--scale-search` when it nears or recedes); fit jump apex, gravity and speed |
-| `camera_solve.py vanishing\|size\|ground` | FOV, pitch, roll and height from marked lines or a known object; ground-plane homography that turns third-person tracks into studs |
+| `camera_solve.py vanishing\|size\|ground` | FOV, pitch, roll and height from marked lines or a known object; ground-plane homography that turns third-person tracks into studs; `--viewport` for letterboxes |
 | `remake_calc.py jump --apex 7.2 --rise-time 0.38` | Unit, FOV, jump, acceleration, spring and frame-time conversions, with `--luau` output |
-| `fit_curve.py --track track.json --field x_px --luau` | Rank every template easing curve, a spring and an exponential approach against tracked samples; duration or spring parameters; says when fits are indistinguishable |
-| `visual_compare.py pair ref.png rec.png --out diff/` | SSIM, ΔE2000, Lab shifts, edge IoU, heatmap, grading hints |
+| `fit_curve.py --track track.json --field x_px --luau` | Rank every template easing curve, a spring and an exponential approach against tracked samples; duration or spring parameters; says when fits are indistinguishable or none matches |
+| `visual_compare.py pair ref.png rec.png --out diff/` | SSIM (global and worst window), ΔE2000, Lab shifts, edge IoU, heatmap, grading hints |
 | `palette_extract.py frame.png --region x,y,w,h` | Dominant colors as hex and `Color3.fromRGB` |
 | `ui_measure.py boxes.json --luau` | Pixel boxes to UDim2 scale, AnchorPoint and aspect ratio; `--from-capture` measures the build's capture the same way; `--compare --out` saves a layout report that `fidelity_report` scores |
 | `event_stats.py events.csv --fps 60 --intervals spawn --rate drop/kill` | Event tables: intervals with spread, binomial rate intervals (never a bare %), state machines, progression curves, input response time |
@@ -205,7 +205,7 @@ network calls, and exits non-zero on bad input. Video scripts call `ffmpeg`/`ffp
 | `audio_compare.py analyze\|compare` | Duration, loudness envelope, dominant frequency and brightness of a sound; score an original or licensed replacement against it, with Roblox tuning hints |
 | `breakdown_check.py remake --strict` | Validate breakdown coverage, evidence links and statuses |
 | `measure_compare.py output.log --targets remake/targets.json` | Compare in-game measurements (movement, jumps, input latency) with reference targets; `--subject p1 --interval startup=attack..active` for `SimRecorder` logs, judged in frames |
-| `clip_compare.py ref-track.json rec.log --targets remake/targets.json --plot clip.png` | Align a build recording (track or harness log) with the reference clip; position error over time, event offsets, overlay plot |
+| `clip_compare.py ref-track.json rec.log --targets remake/targets.json --plot clip.png` | Align a build recording (track or harness log) with the reference clip; position error along and off the path, event offsets, overlay plot |
 | `fidelity_report.py remake --diff-log --label "it7: exposure"` | Score every shot, metric and clip against tolerance; history, scorecard and diff-log entry; exit 1 on a regression |
 | `blender_roblox_export.py` | Run inside Blender: check Roblox mesh and rig limits, then export FBX or glTF |
 

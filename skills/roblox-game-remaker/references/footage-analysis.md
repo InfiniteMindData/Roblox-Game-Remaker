@@ -179,7 +179,14 @@ tracked speed suggests foot sliding in the original, or a measurement error.
     object of known height standing on the ground) or `--known-ground` (two ground points a known
     distance apart). Long lines that converge strongly give the tightest result.
   - `size`: an object of known size at a known depth: `--span x1,y1,x2,y2 --size 5 --distance 20`.
-  The solver assumes square pixels and a centered principal point: use uncropped frames.
+  The solver assumes square pixels and a principal point at the center of the game picture: use
+  uncropped frames. For letterboxed or pillarboxed footage pass `--viewport x,y,w,h` (the picture
+  inside the bars, for example `0,140,1920,800`): FOV is then measured over the picture, as
+  Camera.FieldOfView is. Without it a 1920×800 picture in a 1920×1080 frame reads 86.8° instead
+  of 70°. With three line sets, a set that stays parallel in the image is skipped (said in the
+  warnings). `ground` mode reports the camera it derives from the rectangle with an uncertainty
+  (`camera_from_rect.uncertainty`, often ±2–4° vFOV per pixel of marking error): confirm it with
+  `vanishing` on long lines before you trust it.
 - **Follow distance and offset.** Solve the camera height and pitch first (above), then measure
   where the character sits on screen (as a fraction of width and height) while idle. With FOV,
   pitch and height known, the distance to the character's feet comes from the ground-plane ray
@@ -209,10 +216,13 @@ tracked speed suggests foot sliding in the original, or a measurement error.
 ## 9. Audio timing
 
 ```bash
-python scripts/audio_onsets.py clip.mp4 --fps 60 --out remake/audio/clip-onsets.json
+python scripts/audio_onsets.py clip.mp4 --out remake/audio/clip-onsets.json
 ```
 
-This gives onset times and the nearest frame index. Use it to align footsteps with animation
+This gives onset times and the nearest frame index. Times are on the video's timeline (the same
+`pts_time` as extract_frames manifests), including an audio stream that starts later than the
+video; frames come from the real per-frame timestamps, so variable-frame-rate clips map correctly.
+`--fps` overrides that (and warns on a VFR clip). Use it to align footsteps with animation
 contact frames, hit sounds with active frames, and UI sounds with tweens.
 
 To describe one sound, cut its segment around an onset:
@@ -221,7 +231,8 @@ To describe one sound, cut its segment around an onset:
 python scripts/audio_compare.py analyze clip.mp4 --start 12.40 --end 12.90 --plot remake/audio/jump-ref.png --out remake/audio/jump-ref.json
 ```
 
-It reports duration, RMS level and peak (dBFS), the loudness envelope, the dominant frequency
+It reports duration, RMS level, sample peak (`peak_dbfs`) and loudest envelope frame
+(`envelope_peak_dbfs`), the loudness envelope, the dominant frequency
 over time and the spectral centroid (brightness). Levels are relative to that recording's mix:
 compare sounds from the same capture with each other, not with absolute loudness. Music under the
 effect masks it; prefer clips with music turned down.

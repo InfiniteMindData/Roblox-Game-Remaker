@@ -115,7 +115,8 @@ original does elsewhere.
   `python scripts/fit_curve.py --track remake/tracks/menu-open.json --field x_px --luau`. It ranks
   every template `Easing` curve, a spring and an exponential approach, gives the duration with an
   uncertainty, and says when the top fits cannot be told apart at the footage's frame rate (record
-  the alternatives then, and pick by intent).
+  the alternatives then, and pick by intent). Its ± covers those alternatives, and is widened when
+  the residuals show that no candidate matches (`model_confirmed: false`).
 - When the best fit is an `EasingStyle`/`EasingDirection`, use
   `TweenInfo.new(duration, style, direction)`. The fitter uses the template's textbook formulas;
   where exact `TweenService` equivalence matters, compare a few values with
@@ -152,7 +153,9 @@ Layout first, measured the same way as the reference, at whatever size the Studi
 4. `python scripts/ui_measure.py --compare remake/ui/ref-boxes.json remake/ui/rec-NN.json --out remake/diff/ui-NN.json`.
    When the words differ by design (an homage with original names, a translation), add
    `"ignore": ["w"]` to those elements in the reference boxes: width cannot match, while x, y and
-   cap height still can.
+   cap height still can. Hand-measured recreation boxes at another resolution or aspect are mapped
+   the same way (the reference's `scale_rule` and each element's anchor), so a height-scaled HUD
+   pinned to a corner of a 5:4 screen compares correctly with its 16:9 reference.
 5. `python scripts/fidelity_report.py remake --diff-log --label "..."` scores the saved layout
    report (`ui:<reference file>`, r = worst error / tolerance) with the shots, metrics and clips.
 6. Colors and grading: `visual_compare.py pair` on a capture at the reference aspect ratio (see

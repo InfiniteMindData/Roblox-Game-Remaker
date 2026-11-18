@@ -17,7 +17,14 @@ freedom, or --noise if larger). The tool says plainly when the top fits are not 
 and estimates the frame rate at which they would be.
 
 Duration and start uncertainties come from refitting the best curve to residual-resampled data
-(40 draws), and are never smaller than half a frame.
+(40 draws), and are never smaller than half a frame. That ± is conditional on the best curve being
+the right one (uncertainty_conditional). The reported uncertainty also covers:
+  - lack of fit: residuals that run in long same-sign stretches (lag-1 autocorrelation above 0.5,
+    or a runs test below -3 sigma) mean no candidate matches the motion (a smoothstep, a keyframed
+    curve, tracking drift); the ± is then widened by the AR(1) factor sqrt((1 + r) / (1 - r)) and
+    model_confirmed is false, with a warning
+  - rival curves: when other curves are not distinguishable from the best, the ± covers their
+    values of the same parameter (duration, start, ...)
 
 Input (one of):
   --track TRACK.json --field u      motion_track, pose_track or camera_solve ground output; any
@@ -342,6 +349,29 @@ def load_samples(args):
 
 # ----------------------------------------------------------------- report
 
+def residual_structure(fit, t, y) -> dict:
+    """Lag-1 autocorrelation and a Wald-Wolfowitz runs z-score of the residuals. Independent noise
+    gives r near 0 and z near 0; a curve that does not match leaves long same-sign stretches."""
+    np = rc.require_numpy()
+    res = y - model_values(fit, t)
+    scale = float(np.abs(res).max())
+    if scale < 1e-12 or len(res) < 8:
+        return {"lag1_autocorrelation": 0.0, "runs_z": 0.0, "systematic": False}
+    c = res - res.mean()
+    den = float((c * c).sum())
+    r1 = float((c[:-1] * c[1:]).sum() / den) if den > 0 else 0.0
+    sg = np.sign(res[np.abs(res) > 1e-9 * scale])
+    n1, n2 = int((sg > 0).sum()), int((sg < 0).sum())
+    z = 0.0
+    if n1 and n2:
+        n = n1 + n2
+        runs = 1 + int((sg[1:] != sg[:-1]).sum())
+        mu = 2 * n1 * n2 / n + 1
+        var = 2 * n1 * n2 * (2 * n1 * n2 - n) / (n * n * (n - 1))
+        z = (runs - mu) / math.sqrt(var) if var > 0 else 0.0
+    return {"lag1_autocorrelation": round(r1, 4), "runs_z": round(z, 3), "systematic": bool(r1 > 0.5 or z < -3.0)}
+
+
 def compare_top(fits, t, sigma, dt):
     """Fits whose residual sum of squares is within 9 noise variances of the best (a 3-sigma likelihood
     ratio). For each, the lowest frame rate (2x to 16x the footage's) at which the rival curve,
@@ -425,7 +455,21 @@ def main() -> int:
     boot = bootstrap(best, t, y, dt)
     # Never claim more than the frame period (times) or the final grid step (spring) can resolve.
     floors = {"start_s": dt / 2, "duration_s": dt / 2, "tau_s": dt / 2, "omega": 0.004 * best.get("omega", 0.0), "zeta": 0.002}
-    unc = {k: max(2 * v, floors[k]) for k, v in boot.items()}
+    cond = {k: max(2 * v, floors[k]) for k, v in boot.items()}
+    unc = dict(cond)
+    struct = residual_structure(best, t, y)
+    infl = 1.0
+    if struct["systematic"]:
+        rho = min(max(struct["lag1_autocorrelation"], 0.5), 0.99)
+        infl = math.sqrt((1 + rho) / (1 - rho))
+        unc = {k: v * infl for k, v in unc.items()}
+    by_name = {f["name"]: f for f in fits}
+    for tie in ties:  # rivals that fit as well: the parameter could be any of their values
+        f = by_name.get(tie["name"])
+        for k in unc:
+            if f is not None and k in f:
+                unc[k] = max(unc[k], abs(f[k] - best[k]))
+    model_confirmed = not struct["systematic"] and not ties
     inside = int(((t >= best["start_s"]) & (t <= best["start_s"] + best.get("duration_s", 3 * best.get("tau_s", 0) or 0.0))).sum())
     if best["family"] == "spring":
         inside = int(((t >= best["start_s"]) & (t <= best["start_s"] + 4.0 / (best["zeta"] * best["omega"]))).sum())
@@ -442,6 +486,12 @@ def main() -> int:
                            "the noise even at 16x the frame rate, so pick by intent and record the alternatives." if sep else
                            "They stay within the noise even at 16x the frame rate, so more frames will not help; reduce the noise "
                            "(a larger, sharper feature) or pick by intent and record the alternatives."))
+    if struct["systematic"]:
+        warnings.append(f"MODEL NOT CONFIRMED: the residuals of {best['name']} are systematic (lag-1 autocorrelation "
+                        f"{struct['lag1_autocorrelation']:.2f}, runs z {struct['runs_z']:.1f}), so no candidate matches the motion "
+                        "exactly (a smoothstep, keyframes, tracking drift). The parameters are those of the closest curve; the ± "
+                        f"is widened {math.sqrt((1 + min(max(struct['lag1_autocorrelation'], 0.5), 0.99)) / (1 - min(max(struct['lag1_autocorrelation'], 0.5), 0.99))):.1f}x "
+                        "for correlated residuals and is still a lower bound. Compare against the clip, not only the number.")
     if inside < 6:
         warnings.append(f"only {inside} samples fall inside the fitted transition; the curve shape is weakly constrained")
     if best["rms"] > 0.05 * abs(best["to"] - best["from"]):
@@ -450,12 +500,15 @@ def main() -> int:
     tie_note = f"; equally good: {', '.join(x['name'] for x in ties)}" if ties else ""
     method = (f"fit_curve {source}: grid-search fit of {len(fits)} candidates (template Easing curves, Spring, exponential "
               f"approach), {len(t)} samples at {1 / dt:.2f} fps; best {best['name']} rms {best['rms']:.4g}{tie_note}; "
-              "uncertainty = 2x bootstrap std (40 residual draws), at least half a frame")
+              "uncertainty = 2x bootstrap std (40 residual draws), at least half a frame"
+              + ("; widened for systematic residuals (model not confirmed)" if struct["systematic"] else "")
+              + ("; widened to cover indistinguishable curves" if ties else ""))
     ms = []
     label = best["name"] + (" or " + ties[0]["name"] if ties else "")
     if best["family"] == "easing":
         ms.append({"metric": "curve_duration", "what": f"tween duration ({label})", "value": round(best["duration_s"], 4),
-                   "uncertainty": round(unc["duration_s"], 4), "unit": "s", "method": method})
+                   "uncertainty": round(unc["duration_s"], 4), "unit": "s", "method": method,
+                   "model_confirmed": model_confirmed})
     elif best["family"] == "spring":
         ms.append({"metric": "curve_spring_omega", "what": f"spring angular frequency ({label})", "value": round(best["omega"], 4),
                    "uncertainty": round(unc["omega"], 4), "unit": "rad/s", "method": method})
@@ -472,6 +525,8 @@ def main() -> int:
     report = {"tool": TOOL, "schema": SCHEMA, "source": source, "samples": len(t), "fps": round(1 / dt, 3),
               "transition_estimate_s": [round(win[0], 4), round(win[1], 4)], "noise": round(sigma, 6),
               "best": clean(best), "uncertainty": {k: round(v, 5) for k, v in unc.items()},
+              "uncertainty_conditional": {k: round(v, 5) for k, v in cond.items()},
+              "model_confirmed": model_confirmed, "residuals": struct,
               "indistinguishable_from_best": ties, "fits": [clean(f) for f in fits], "measurements": ms,
               "warnings": warnings, "method": method}
     if args.plot:
@@ -491,7 +546,9 @@ def main() -> int:
     for i, f in enumerate(fits[:args.top], 1):
         print(f"{i:<5}{f['name']:<18}{f['rms']:>11.5g}  {describe(f)}; {f['from']:.4g} -> {f['to']:.4g}")
     u = ", ".join(f"{k} ± {v:.4g}" for k, v in unc.items())
-    print(f"best: {best['name']} ({describe(best)}); {u}")
+    print(f"best: {best['name']} ({describe(best)}); {u}"
+          + ("" if model_confirmed else f" (model not confirmed; ± if {best['name']} were right: "
+             + ", ".join(f"{k} {v:.4g}" for k, v in cond.items()) + ")"))
     for w in warnings:
         print(f"WARNING: {w}", file=sys.stderr)
     if args.luau:

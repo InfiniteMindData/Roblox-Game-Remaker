@@ -35,18 +35,18 @@ research → measure → document → translate → build → compare → fix
 | `extract_frames.py` | Exact frames with index and timestamp manifests (all, every, range, times, scene cuts) |
 | `contact_sheet.py` | Labeled frame grids, including reference/recreation pairs |
 | `motion_track.py` | Feature tracking with camera-pan compensation; jump fits (rise and fall gravity) and acceleration fits |
-| `camera_solve.py` | Vertical FOV, pitch and height from marked lines or a known object; ground-plane conversion of third-person tracks to studs |
-| `remake_calc.py` | Units, horizontal/vertical FOV, frames, jump solving, acceleration, spring parameters |
-| `fit_curve.py` | Rank every template easing curve, a spring and an exponential approach against tracked samples; flags fits the frame rate cannot tell apart |
-| `visual_compare.py` | SSIM, CIEDE2000, Lab shifts, edge IoU, heatmaps, lighting hints, batch shot lists |
+| `camera_solve.py` | Vertical FOV, pitch and height with uncertainties from marked lines or a known object; letterbox viewport; ground-plane conversion of third-person tracks to studs |
+| `remake_calc.py` | Units, horizontal/vertical FOV, frames, jump solving (metres or feet converted to studs), acceleration, spring parameters |
+| `fit_curve.py` | Rank every template easing curve, a spring and an exponential approach against tracked samples; flags fits the frame rate cannot tell apart and curves no candidate matches |
+| `visual_compare.py` | SSIM (global and worst local window), CIEDE2000, Lab shifts, edge IoU, heatmaps, lighting hints, batch shot lists |
 | `palette_extract.py` | Dominant colors as `Color3.fromRGB` |
 | `ui_measure.py` | Pixel boxes to `AnchorPoint`/`UDim2`, Luau layout output, layout diffing |
 | `event_stats.py` | Event tables from footage: intervals with spread, exact binomial rate intervals, state machines, progression curves |
-| `audio_onsets.py` | Sound onsets mapped to video frames |
+| `audio_onsets.py` | Sound onsets on the video timeline, mapped to frames by real timestamps (variable frame rate safe) |
 | `audio_compare.py` | Duration, loudness envelope, dominant frequency and brightness of a sound; score a replacement against it with Roblox tuning hints |
 | `breakdown_init.py` / `breakdown_check.py` | Create and validate the evidence-backed breakdown |
-| `measure_compare.py` | Compare in-game motion logs with reference targets |
-| `clip_compare.py` | Compare a build recording or harness log with the reference clip over time: aligned position error, event offsets, overlay plot |
+| `measure_compare.py` | Compare in-game motion logs with reference targets, per trial; missing targets fail |
+| `clip_compare.py` | Compare a build recording or harness log with the reference clip over time: aligned position error along and off the path, event offsets, overlay plot |
 | `blender_roblox_export.py` | Check Roblox mesh and rig limits in Blender, then export |
 | `doctor.py` | Report which tools are available |
 | `remake_status.py` | Phase gates, open items, next action; writes `STATUS.md` |

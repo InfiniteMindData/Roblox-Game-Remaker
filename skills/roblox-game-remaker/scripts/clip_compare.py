@@ -8,14 +8,18 @@ REF and REC can each be:
   - an extract_frames manifest.json, tracked here with --ref-bbox / --rec-bbox
     (and --ref-px-per-unit / --rec-px-per-unit for world units)
 
-Every input becomes two series in its own unit: "along", the signed distance travelled along the
-clip's net horizontal direction (orientation-independent), and "up", the height change (absent
-for ground-plane tracks). The two clips are aligned on a shared event (the first motion, found by
+Every input becomes series in its own unit: "along", the signed distance travelled along the
+clip's net horizontal direction (orientation-independent), "lateral", the signed sideways
+distance from that line (positive to the left of the direction of travel; only for inputs with two
+horizontal axes: camera_solve ground output and harness logs), and "up", the height change (absent
+for ground-plane tracks). A side-on motion_track has no lateral axis: a sideways detour toward or
+away from the camera cannot be seen there. The two clips are aligned on a shared event (the first motion, found by
 back-extrapolating the start of the movement, or a given frame in each), zeroed at that event,
 resampled to a common time base, and compared:
 
   position_rms / position_max   recreation minus reference, per axis and combined
   bias                          mean signed error per axis
+  per_axis.lateral              the off-path error (a detour the along axis cannot show)
   events                        motion_start, speed_90 (90% of steady speed), apex, landing,
                                 stop: time since alignment in each clip, and the offset
   floor                         the error that frame quantization alone produces (peak speed x
@@ -24,6 +28,8 @@ resampled to a common time base, and compared:
 Tolerances come from targets.json ("clips": {"default": {...}, "<--clip id>": {...}}) or flags:
   position_rms, position_max (absolute, in the clips' unit) or position_rms_pct,
   position_max_pct (percent of the reference's travel); event_offset_s or event_offset_frames.
+With an event tolerance, an event found in one clip but not the other fails (a jump the build never
+makes is not a pass); without one it is listed with a warning.
 
 Writes --out JSON and --plot PNG (position versus time, both clips, events marked).
 Exit: 0 pass (or no tolerances), 1 a tolerance is exceeded, 2 bad input.
@@ -53,12 +59,13 @@ EVENT_NAMES = ("motion_start", "speed_90", "apex", "landing", "stop")
 # ----------------------------------------------------------------- loading
 
 class Clip:
-    def __init__(self, label, t, along, up, unit, source, kind, index=None, notes=None):
+    def __init__(self, label, t, along, up, unit, source, kind, index=None, notes=None, lateral=None):
         np = rc.require_numpy()
         order = np.argsort(t)
         self.label, self.unit, self.source, self.kind = label, unit, source, kind
         self.t = np.asarray(t, float)[order]
         self.along = np.asarray(along, float)[order]
+        self.lateral = None if lateral is None else np.asarray(lateral, float)[order]
         self.up = None if up is None else np.asarray(up, float)[order]
         self.index = None if index is None else [index[i] for i in order]
         self.notes = notes or []
@@ -70,18 +77,31 @@ class Clip:
         self.dt = float(np.median(dts))
 
 
+def _direction(dx, dz):
+    """Unit net horizontal direction of travel (start to end, or start to the farthest point)."""
+    np = rc.require_numpy()
+    n = math.hypot(dx[-1], dz[-1])
+    if n >= 1e-9:
+        return dx[-1] / n, dz[-1] / n
+    far = int(np.argmax(np.hypot(dx, dz)))
+    n = math.hypot(dx[far], dz[far])
+    return (dx[far] / n, dz[far] / n) if n >= 1e-9 else None
+
+
 def _project_along(dx, dz):
     """Signed distance along the net horizontal direction of travel (start to end)."""
     np = rc.require_numpy()
     dx, dz = np.asarray(dx, float), np.asarray(dz, float)
-    n = math.hypot(dx[-1], dz[-1])
-    if n < 1e-9:
-        far = int(np.argmax(np.hypot(dx, dz)))
-        n = math.hypot(dx[far], dz[far])
-        if n < 1e-9:
-            return dx * 0.0
-        return (dx * dx[far] + dz * dz[far]) / n
-    return (dx * dx[-1] + dz * dz[-1]) / n
+    d = _direction(dx, dz)
+    return dx * 0.0 if d is None else dx * d[0] + dz * d[1]
+
+
+def _project_lateral(dx, dz):
+    """Signed sideways distance from the net direction line (positive = left of the direction of travel)."""
+    np = rc.require_numpy()
+    dx, dz = np.asarray(dx, float), np.asarray(dz, float)
+    d = _direction(dx, dz)
+    return dx * 0.0 if d is None else dz * d[0] - dx * d[1]
 
 
 def load_clip(path: Path, side: str, args) -> Clip:
@@ -108,10 +128,10 @@ def load_clip(path: Path, side: str, args) -> Clip:
             s = data["track"].get("samples") or []
             if not s:
                 rc.fail(f"{side}: {path} has no converted track samples")
-            along = _project_along([r["X"] - s[0]["X"] for r in s], [r["Z"] - s[0]["Z"] for r in s])
+            dx, dz = [r["X"] - s[0]["X"] for r in s], [r["Z"] - s[0]["Z"] for r in s]
             notes = list(data.get("warnings") or [])
-            return Clip(side, [r["t"] for r in s], along, None, data.get("unit", "studs"), str(path), "camera_solve ground",
-                        [r.get("index") for r in s], notes)
+            return Clip(side, [r["t"] for r in s], _project_along(dx, dz), None, data.get("unit", "studs"), str(path),
+                        "camera_solve ground", [r.get("index") for r in s], notes, lateral=_project_lateral(dx, dz))
         rc.fail(f"{side}: {path} is neither motion_track nor camera_solve ground output, nor a frame manifest")
     # Anything else is treated as a harness log.
     import measure_compare
@@ -120,8 +140,9 @@ def load_clip(path: Path, side: str, args) -> Clip:
     if len(samples) < 5:
         rc.fail(f"{side}: {path} has fewer than 5 REMAKE_MEASURE samples")
     p = np.array([s["p"] for s in samples], float)
-    along = _project_along(p[:, 0] - p[0, 0], p[:, 2] - p[0, 2])
-    return Clip(side, [s["t"] for s in samples], along, p[:, 1] - p[0, 1], "studs", str(path), "harness log")
+    dx, dz = p[:, 0] - p[0, 0], p[:, 2] - p[0, 2]
+    return Clip(side, [s["t"] for s in samples], _project_along(dx, dz), p[:, 1] - p[0, 1], "studs", str(path), "harness log",
+                lateral=_project_lateral(dx, dz))
 
 
 def track_manifest(path: Path, side: str, args) -> Clip:
@@ -304,9 +325,19 @@ def compare(ref: Clip, rec: Clip, args) -> dict:
         travel = {a: max(float(np.abs(getattr(c, a)).max()) for c in (ref, rec)) for a in axes}
         axes = [a for a in axes if travel[a] >= 0.05 * max(travel.values())]
     if args.axis != "auto":
-        axes = [a for a in axes if a == args.axis] if args.axis != "both" else axes
-        if not axes:
+        axes = [a for a in axes if a == args.axis] if args.axis not in ("both", "lateral") else axes
+        if not axes and args.axis != "lateral":
             rc.fail(f"--axis {args.axis} is not available for both clips (ground-plane tracks have no 'up')")
+    # The off-path error is always judged when both clips have two horizontal axes: a straight run
+    # and a run with a sideways detour have the same along-path distance.
+    lateral = ref.lateral is not None and rec.lateral is not None
+    if args.axis == "lateral":
+        if not lateral:
+            rc.fail("--axis lateral needs two horizontal axes in both clips (camera_solve ground output or harness logs)")
+        axes = ["lateral"]
+    elif lateral and args.axis in ("auto", "both"):
+        axes = axes + ["lateral"]
+    no_lateral = [c.label for c in (ref, rec) if c.lateral is None]
     t0 = max(ref.t[0] - ta_ref, rec.t[0] - ta_rec)
     t1 = min(ref.t[-1] - ta_ref, rec.t[-1] - ta_rec)
     if args.window:
@@ -318,7 +349,7 @@ def compare(ref: Clip, rec: Clip, args) -> dict:
     grid = np.arange(t0, t1 + 1e-9, step)
 
     def series(c, ta, name):
-        y = getattr(c, name)
+        y = getattr(c, name)  # along, up or lateral
         y0 = float(np.interp(ta, c.t, y))
         return np.interp(grid + ta, c.t, y) - y0
 
@@ -348,7 +379,8 @@ def compare(ref: Clip, rec: Clip, args) -> dict:
         elif name in ev_ref or name in ev_rec:
             ev[name] = {"reference_s": round(ev_ref[name], 4) if name in ev_ref else None,
                         "recreation_s": round(ev_rec[name], 4) if name in ev_rec else None,
-                        "offset_s": None, "note": "found in one clip only"}
+                        "offset_s": None, "missing_in": "recreation" if name in ev_ref else "reference",
+                        "note": "found in the reference only" if name in ev_ref else "found in the recreation only"}
 
     tol = tolerances(args, ref_travel)
     if "event_offset_frames" in tol:
@@ -365,7 +397,14 @@ def compare(ref: Clip, rec: Clip, args) -> dict:
                 continue  # zero by construction
             if e.get("offset_s") is not None and abs(e["offset_s"]) > tol["event_offset_s"]:
                 failures.append(f"{name} offset {e['offset_s']:+.4f} s exceeds ±{tol['event_offset_s']:.4f} s")
+            elif e.get("missing_in"):
+                failures.append(f"{name}: {e['note']}, so its offset cannot be judged (the clips do not show the same events)")
     warnings = [f"{c.label}: {n}" for c in (ref, rec) for n in c.notes]
+    for name, e in ev.items():
+        if e.get("missing_in") and "event_offset_s" not in tol:
+            warnings.append(f"event {name} is {e['note']}: the clips do not show the same events")
+    if no_lateral:
+        warnings.append(f"{' and '.join(no_lateral)} has no sideways axis (side-on track): off-path error is not measured")
     if rms < floor:
         warnings.append(f"the rms error ({rms:.4g}) is below the frame-quantization floor ({floor:.4g}): the clips match "
                         "as closely as these frame rates can show")
@@ -406,7 +445,8 @@ def main() -> int:
     ap.add_argument("--align", choices=["first-motion", "frames", "start"], default="first-motion")
     ap.add_argument("--ref-frame", type=int, help="with --align frames: source frame index (or sample) in the reference")
     ap.add_argument("--rec-frame", type=int, help="with --align frames: source frame index (or sample) in the recreation")
-    ap.add_argument("--axis", choices=["auto", "along", "up", "both"], default="auto")
+    ap.add_argument("--axis", choices=["auto", "along", "up", "both", "lateral"], default="auto",
+                    help="axes to compare (default auto; lateral, the off-path error, is added whenever both clips have it)")
     ap.add_argument("--window", help="a,b: compare only this time range (s since alignment)")
     ap.add_argument("--rate", type=float, help="resampling rate in Hz (default: the finer clip's frame rate)")
     ap.add_argument("--motion-threshold", type=float, default=0.02, help="fraction of the travel that counts as moving (default 0.02)")

@@ -53,6 +53,40 @@ def analyze_timestamps(ts: list[float]) -> dict:
     }
 
 
+def stream_differences(cmd: list[str], frame_size: int) -> tuple[int, list[float], int, str]:
+    """Run ffmpeg and read its raw frames one at a time, keeping only the previous frame: memory
+    stays constant however long the clip is. Returns (frames, mean abs differences, exit code, stderr)."""
+    import subprocess
+    import tempfile
+
+    np = rc.require_numpy()
+    argv = list(cmd)
+    argv[0] = rc.which(argv[0]) or argv[0]
+    mad: list[float] = []
+    count = 0
+    prev = None
+    with tempfile.TemporaryFile() as errf:  # a file, not a pipe: a full stderr pipe would stall ffmpeg
+        try:
+            proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=errf)
+        except (FileNotFoundError, PermissionError):
+            rc.fail(f"could not run '{cmd[0]}'")
+        assert proc.stdout is not None
+        while True:
+            buf = proc.stdout.read(frame_size)
+            if not buf or len(buf) < frame_size:
+                break
+            cur = np.frombuffer(buf, dtype=np.uint8).astype(np.float32)
+            if prev is not None:
+                mad.append(float(np.abs(cur - prev).mean()))
+            prev = cur
+            count += 1
+        proc.stdout.close()
+        code = proc.wait()
+        errf.seek(0)
+        err = errf.read().decode("utf-8", "replace")
+    return count, mad, code, err
+
+
 def duplicate_analysis(video: Path, width: int, height: int, region, threshold: float, max_frames: int | None) -> dict:
     np = rc.require_numpy()
     rc.need_tool("ffmpeg")
@@ -72,19 +106,18 @@ def duplicate_analysis(video: Path, width: int, height: int, region, threshold: 
     if max_frames:
         cmd += ["-frames:v", str(int(max_frames))]
     cmd += ["-f", "rawvideo", "-pix_fmt", "gray", "-"]
-    proc = rc.run(cmd, check=False)
-    if proc.returncode != 0:
+    frame_size = sw * sh
+    count, mad, code, err = stream_differences(cmd, frame_size)
+    if code != 0 and count == 0:
         # ffmpeg older than 5.1 has no -fps_mode
         cmd = [c for c in cmd if c not in ("-fps_mode", "passthrough")]
         cmd[cmd.index("-f"):cmd.index("-f")] = ["-vsync", "0"]
-        proc = rc.run(cmd)
-    frame_size = sw * sh
-    raw = proc.stdout
-    count = len(raw) // frame_size
+        count, mad, code, err = stream_differences(cmd, frame_size)
+    if code != 0:
+        rc.fail(f"ffmpeg failed (exit {code}):\n{err[-600:]}", rc.EXIT_FAIL)
     if count < 2:
         rc.fail("not enough decoded frames for duplicate analysis")
-    frames = np.frombuffer(raw[: count * frame_size], dtype=np.uint8).reshape(count, sh, sw).astype(np.float32)
-    mad = np.abs(np.diff(frames, axis=0)).mean(axis=(1, 2))
+    mad = np.asarray(mad, dtype=np.float64)
     p75 = float(np.percentile(mad, 75))
     auto = threshold is None
     if auto:

@@ -6,6 +6,9 @@ Subcommands:
   fov     horizontal / vertical / diagonal FOV at an aspect ratio; Hor+ re-aspect
   frames  frame counts to seconds with +/- one-frame uncertainty
   jump    apex height + rise/fall times -> takeoff speed, rise/fall gravity, Roblox settings
+          (--unit meters|m|cm|feet|ft|studs; non-stud input is converted to studs with
+          --studs-per-meter before any Roblox value is printed; an unknown unit prints no Roblox
+          values)
   accel   top speed + time-to-90% -> linear acceleration, exponential tau, ControllerManager hints
   spring  overshoot + settle time -> damping ratio and angular frequency for Spring.luau
   scale   pixels-per-unit from a known-size reference in the same frame
@@ -38,6 +41,19 @@ import remake_common as rc  # noqa: E402
 METERS_PER_STUD = 0.28
 STUDS_PER_METER = 1.0 / METERS_PER_STUD
 ROBLOX_DEFAULT_GRAVITY = 196.2
+METERS_PER_UNIT = {"meters": 1.0, "meter": 1.0, "m": 1.0, "cm": 0.01, "centimeters": 0.01,
+                   "feet": 0.3048, "foot": 0.3048, "ft": 0.3048}
+STUD_UNITS = {"studs", "stud"}
+
+
+def studs_per_unit(unit: str, studs_per_meter: float = STUDS_PER_METER) -> float | None:
+    """Studs in one `unit`, or None when the unit is not a known length (pixels, arbitrary)."""
+    u = unit.strip().lower()
+    if u in STUD_UNITS:
+        return 1.0
+    if u in METERS_PER_UNIT:
+        return METERS_PER_UNIT[u] * studs_per_meter
+    return None
 
 
 # ----------------------------------------------------------------- math (importable)
@@ -250,6 +266,23 @@ def cmd_frames(args) -> int:
 def cmd_jump(args) -> int:
     d = solve_jump(args.apex, args.rise_time, args.fall_time, args.min_apex, args.release_time)
     u = args.unit
+    if args.studs_per_meter <= 0:
+        rc.fail("--studs-per-meter must be positive")
+    k = studs_per_unit(u, args.studs_per_meter)
+    d["unit"] = u
+    d["studs_per_unit"] = k
+    # Roblox settings are in studs: convert lengths (and so speeds and accelerations) first. Times do
+    # not change; the fall multiplier and release multiplier are ratios.
+    if k is None:
+        d["roblox"] = None
+        d["roblox_note"] = (f"unit {u!r} is not a known length (studs, meters, cm, feet): no Roblox values; "
+                            "convert to studs first (camera_solve or a known size), or pass --unit meters")
+    else:
+        d["roblox"] = {"Workspace.Gravity": d["g_rise"] * k, "CharacterUseJumpPower": False,
+                       "CharacterJumpHeight": d["apex"] * k, "equivalent_JumpPower": d["takeoff_speed"] * k}
+        if k != 1.0:
+            d["studs"] = {"apex": d["apex"] * k, "takeoff_speed": d["takeoff_speed"] * k, "g_rise": d["g_rise"] * k,
+                          "g_fall": d["g_fall"] * k, **({"min_apex": d["min_apex"] * k} if "min_apex" in d else {})}
     lines = [
         f"apex {fmt(d['apex'])} {u}, rise {fmt(d['rise_time'])} s, fall {fmt(d['fall_time'])} s, airtime {fmt(d['airtime'])} s",
         f"takeoff speed v0 = {fmt(d['takeoff_speed'])} {u}/s",
@@ -257,13 +290,25 @@ def cmd_jump(args) -> int:
     ]
     if "release_multiplier" in d:
         lines.append(f"short hop {fmt(d['min_apex'])} {u} with release at {fmt(d['release_time'])} s -> release gravity multiplier {fmt(d['release_multiplier'])}")
-    lines.append(f"Roblox: Workspace.Gravity = {fmt(d['g_rise'])}; StarterPlayer.CharacterUseJumpPower = false; CharacterJumpHeight = {fmt(d['apex'])}"
-                 f" (equivalent JumpPower {fmt(d['takeoff_speed'])})")
+    if k is None:
+        lines.append(f"Roblox: not printed - {d['roblox_note']}")
+        luau = None
+    else:
+        r = d["roblox"]
+        if k != 1.0:
+            lines.append(f"in studs (1 {u} = {fmt(k)} studs): apex {fmt(r['CharacterJumpHeight'])} studs, takeoff "
+                         f"{fmt(r['equivalent_JumpPower'])} studs/s, rise gravity {fmt(r['Workspace.Gravity'])} studs/s^2")
+        lines.append(f"Roblox: Workspace.Gravity = {fmt(r['Workspace.Gravity'])}; StarterPlayer.CharacterUseJumpPower = false; "
+                     f"CharacterJumpHeight = {fmt(r['CharacterJumpHeight'])} (equivalent JumpPower {fmt(r['equivalent_JumpPower'])})")
     if abs(d["fall_multiplier"] - 1) > 0.05:
         lines.append("Asymmetric jump: use MovementFeel FallGravityMultiplier (extra downward VectorForce while falling).")
+    if k is None:
+        if getattr(args, "luau", False):
+            print("Luau not printed: Config values are in studs and the unit is unknown", file=sys.stderr)
+        return emit(d, args, lines, None)
     luau = [
-        f"Gravity = {d['g_rise']:.3f}, -- rise gravity (studs/s^2)",
-        f"JumpApex = {d['apex']:.3f},",
+        f"Gravity = {d['g_rise'] * k:.3f}, -- rise gravity (studs/s^2)",
+        f"JumpApex = {d['apex'] * k:.3f}, -- studs",
         f"RiseTime = {d['rise_time']:.4f},",
         f"FallTime = {d['fall_time']:.4f},",
         f"FallGravityMultiplier = {d['fall_multiplier']:.4f},",
@@ -275,6 +320,12 @@ def cmd_jump(args) -> int:
 
 def cmd_accel(args) -> int:
     d = solve_accel(args.top_speed, args.t90, args.time_to_top)
+    if args.t90 is not None and args.time_to_top is not None and abs(args.t90 - 0.9 * args.time_to_top) > 0.01 * args.t90:
+        # A linear ramp reaches 90% at 0.9 x its duration: the two inputs describe different motions.
+        d["warning"] = (f"--t90 {args.t90:g} and --time-to-top {args.time_to_top:g} disagree (a linear ramp of "
+                        f"{args.time_to_top:g} s reaches 90% at {0.9 * args.time_to_top:g} s); the linear values use "
+                        "--time-to-top and the exponential values --t90: measure again and give one")
+        print(f"WARNING: {d['warning']}", file=sys.stderr)
     lines = [
         f"top speed {fmt(d['top_speed'])}; t90 {fmt(d['t90'])} s",
         f"linear ramp: full speed after {fmt(d['linear']['time_to_top'])} s, acceleration {fmt(d['linear']['acceleration'])} units/s^2",
@@ -342,7 +393,10 @@ def main() -> int:
     p.add_argument("--fall-time", type=float)
     p.add_argument("--min-apex", type=float, help="apex of the shortest (tap) jump")
     p.add_argument("--release-time", type=float, help="seconds after takeoff when the tap jump's button is released")
-    p.add_argument("--unit", default="studs")
+    p.add_argument("--unit", default="studs", help="unit of --apex: studs (default), meters, cm or feet; converted to "
+                   "studs for the Roblox values")
+    p.add_argument("--studs-per-meter", type=float, default=STUDS_PER_METER,
+                   help=f"world scale for non-stud units (default official {STUDS_PER_METER:.4f})")
     p.add_argument("--json", action="store_true")
     p.add_argument("--luau", action="store_true")
     p.set_defaults(fn=cmd_jump)

@@ -268,7 +268,7 @@ them (`trials_needed`). Done when every `AI`/`SYS` timer, rate and state in the 
 ## 18. Match a sound effect with an original or licensed replacement
 
 ```bash
-python scripts/audio_onsets.py clip.mp4 --fps 60 --start 12 --end 14
+python scripts/audio_onsets.py clip.mp4 --start 12 --end 14
 python scripts/audio_compare.py analyze clip.mp4 --start <onset - 0.05> --end <onset + 0.6> --out remake/audio/jump-ref.json --plot remake/audio/jump-ref.png
 python scripts/audio_compare.py compare clip.mp4 remake/audio/jump-new.wav --ref-start <onset - 0.05> --ref-end <onset + 0.6> --plot remake/audio/jump-cmp.png
 ```

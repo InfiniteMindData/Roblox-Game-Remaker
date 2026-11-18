@@ -24,6 +24,10 @@ Modes:
   ui_measure.py boxes.json --luau          a Luau builder function for a ScreenGui
   ui_measure.py --compare ref.json rec.json [--tolerance 1.0] [--out remake/diff/ui-it3.json]
       per-element position and size error as % of the screen; exit 1 if any exceeds tolerance.
+      A recreation at another resolution or aspect is mapped into the reference frame the way the
+      game scales its UI: the reference's scale_rule (height, width, fit, none) and each element's
+      anchor, so a height-scaled HUD pinned to the bottom-right corner of a 5:4 screen compares
+      correctly with its 16:9 reference.
       An element may list dimensions to leave out, in either file: "ignore": ["w"] for a label whose
       words differ on purpose (an homage, a translation), "ignore": ["w", "h"] for a free-size panel.
       --out saves the JSON report where fidelity_report.py scores it (any path under remake/diff/).
@@ -185,18 +189,34 @@ def ignored(*elements: dict) -> set[str]:
 
 
 def compare(ref_path: Path, rec_path: Path, tolerance: float, as_json: bool, out: Path | None = None) -> int:
-    W, H, _, ref = load_boxes(ref_path)
-    W2, H2, _, rec = load_boxes(rec_path)
+    W, H, rule, ref = load_boxes(ref_path)
+    W2, H2, rule2, rec = load_boxes(rec_path)
     rec_by = {e["name"]: e for e in rec}
     rows, worst, missing = [], 0.0, []
+    notes = []
+    s = screen_scale(rule, W, H, W2, H2)
+    if (W2, H2) != (W, H):
+        notes.append(f"recreation {W2}x{H2} mapped to the reference {W}x{H} with the reference's '{rule}' scale rule "
+                     f"(UI scale {s:.4f}) and each element's anchor")
+        if rule2 != rule:
+            notes.append(f"the recreation boxes declare scale_rule '{rule2}', the reference '{rule}': the reference's rule is used")
     for e in ref:
         other = rec_by.get(e["name"])
         if not other:
             missing.append(e["name"])
             continue
         x, y, w, h = e["bbox"]
-        sx, sy = W / W2, H / H2  # normalize the recreation to reference pixels
-        x2, y2, w2, h2 = other["bbox"][0] * sx, other["bbox"][1] * sy, other["bbox"][2] * sx, other["bbox"][3] * sy
+        anchor = e.get("anchor", "auto")
+        if anchor == "auto":
+            anchor = auto_anchor(x, y, w, h, W, H)
+        if anchor not in ANCHORS:
+            rc.fail(f"{e['name']}: unknown anchor {anchor!r}")
+        ax, ay = ANCHORS[anchor]
+        # Map the recreation box into reference pixels: its offset from the anchor point of the
+        # screen scales with the UI scale, as the game lays it out (same mapping as --from-capture).
+        bx, by, bw, bh = (float(v) for v in other["bbox"])
+        x2, y2 = ax * W + (bx - ax * W2) / s, ay * H + (by - ay * H2) / s
+        w2, h2 = bw / s, bh / s
         err = {
             "dx_pct": round(100 * (x2 - x) / W, 3), "dy_pct": round(100 * (y2 - y) / H, 3),
             "dw_pct": round(100 * (w2 - w) / W, 3), "dh_pct": round(100 * (h2 - h) / H, 3),
@@ -207,7 +227,8 @@ def compare(ref_path: Path, rec_path: Path, tolerance: float, as_json: bool, out
         worst = max(worst, m)
         rows.append({"name": e["name"], **err, "ignored": sorted(skip), "max_pct": round(m, 3), "pass": m <= tolerance})
     result = {"tool": TOOL, "mode": "compare", "reference": str(ref_path), "recreation": str(rec_path),
-              "tolerance_pct": tolerance, "elements": rows, "missing": missing,
+              "tolerance_pct": tolerance, "scale_rule": rule, "ui_scale": round(s, 6), "notes": notes,
+              "elements": rows, "missing": missing,
               "worst_pct": round(worst, 3), "pass": worst <= tolerance and not missing}
     if out:
         rc.write_json(out, result)
@@ -221,6 +242,8 @@ def compare(ref_path: Path, rec_path: Path, tolerance: float, as_json: bool, out
             print(f"{'ok  ' if r['pass'] else 'FAIL'} {r['name']:<24} " + " ".join(cell(d) for d in DIMS))
         for name in missing:
             print(f"MISSING {name} (not in the recreation boxes)")
+        for n in notes:
+            print(f"note: {n}")
         print(f"worst error {worst:.2f}% of screen (tolerance {tolerance}%) -> {'pass' if result['pass'] else 'FAIL'}")
         if out:
             print(f"wrote {out}")

@@ -2,7 +2,11 @@
 """Compare a reference frame with a Roblox recreation capture and report actionable metrics.
 
 Metrics (computed on pixels not covered by --mask):
-  ssim            structural similarity of luminance (0..1); sensitive to alignment
+  ssim            structural similarity of luminance (0..1); sensitive to alignment. Windows
+                  that straddle the mask use only unmasked pixels, so masked content cannot move it
+  local_ssim      the lowest SSIM averaged over any small window (--local-window px, default 32
+                  reference px): catches a small region (a HUD icon) that changed completely while
+                  the global SSIM stays high; local_ssim_box says where
   psnr_db         peak signal-to-noise ratio of RGB
   delta_e_mean    mean CIEDE2000 color difference; delta_e_p95 its 95th percentile
   lab_shift       mean recreation-minus-reference dL (lightness), da (green->red), db (blue->yellow)
@@ -17,6 +21,7 @@ Outputs in --out: report.json, side_by_side.png, heatmap.png, edges.png, blink.g
 Subcommands:
   pair REF REC --out DIR [--crop x,y,w,h] [--mask mask.png] [--grid 8x6] [--edges-only]
                  [--fail-under-ssim X] [--fail-over-delta-e Y] [--fail-under-edge-iou Z]
+                 [--fail-under-local-ssim L] [--local-window PX]
   batch SHOTS.json --out DIR [--root PATH] [--allow-missing]
 
 A recreation whose aspect ratio differs from the reference by more than 1% fails: it would be
@@ -25,7 +30,10 @@ aspect ratio, or pass --allow-aspect-mismatch (shots.json: "allow_aspect_mismatc
 stretch is intended.
 
 Without thresholds nothing is judged: the result is "unchecked", not "pass". Set thresholds with
---fail-under-ssim / --fail-over-delta-e / --fail-under-edge-iou, or "thresholds" in shots.json.
+--fail-under-ssim / --fail-over-delta-e / --fail-under-edge-iou / --fail-under-local-ssim, or
+"thresholds" in shots.json (keys ssim, delta_e_mean, edge_iou, local_ssim). A threshold whose metric
+was not computed (--edges-only computes edge IoU alone) fails: it was asked for and not measured.
+Batch summaries store each shot's thresholds next to its result.
 
 Studio MCP screen_capture returns JPEG at the viewport size. JPEG alone adds roughly 1-1.5 mean
 delta E (more at edges), so leave that headroom in delta_e_mean thresholds or capture lossless PNGs.
@@ -130,13 +138,47 @@ def luminance(rgb):
     return 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
 
 
-def ssim_map(x, y):
+def ssim_map(x, y, valid=None):
+    """SSIM per pixel. With a valid mask, every window's statistics use only valid pixels
+    (normalized convolution), so masked content cannot leak into the score of nearby pixels."""
+    np = rc.require_numpy()
     c1, c2 = 0.01 ** 2, 0.03 ** 2
-    mx, my = gaussian_blur(x), gaussian_blur(y)
-    sxx = gaussian_blur(x * x) - mx * mx
-    syy = gaussian_blur(y * y) - my * my
-    sxy = gaussian_blur(x * y) - mx * my
+    if valid is None or bool(np.all(valid)):
+        blur = gaussian_blur
+    else:
+        wv = valid.astype(np.float64)
+        norm = np.maximum(gaussian_blur(wv), 1e-12)
+
+        def blur(img):
+            return gaussian_blur(img * wv) / norm
+    mx, my = blur(x), blur(y)
+    sxx = blur(x * x) - mx * mx
+    syy = blur(y * y) - my * my
+    sxy = blur(x * y) - mx * my
     return ((2 * mx * my + c1) * (2 * sxy + c2)) / ((mx * mx + my * my + c1) * (sxx + syy + c2))
+
+
+def local_min_mean(values, valid, k: int):
+    """Lowest mean of values over any k x k window (valid pixels only, windows at least half valid).
+    Returns (mean, (x0, y0)) of the worst window, or (None, None) when the image is smaller than k."""
+    np = rc.require_numpy()
+    H, W = values.shape
+    if H < k or W < k:
+        return None, None
+
+    def box(a):
+        ii = np.pad(np.cumsum(np.cumsum(a, axis=0), axis=1), ((1, 0), (1, 0)))
+        return ii[k:, k:] - ii[:-k, k:] - ii[k:, :-k] + ii[:-k, :-k]
+
+    v = valid.astype(np.float64)
+    cnt = box(v)
+    tot = box(np.where(valid, values, 0.0))
+    ok = cnt >= 0.5 * k * k
+    if not ok.any():
+        return None, None
+    mean = np.where(ok, tot / np.maximum(cnt, 1e-12), np.inf)
+    iy, ix = np.unravel_index(int(np.argmin(mean)), mean.shape)
+    return float(mean[iy, ix]), (int(ix), int(iy))
 
 
 def edge_map(gray):
@@ -223,7 +265,7 @@ def build_hints(m: dict) -> list[str]:
 
 
 def compare(ref_path: Path, rec_path: Path, out_dir: Path, *, crop=None, mask_path: Path | None = None,
-            grid=(8, 6), edges_only=False, metric_width=1280, write_images=True) -> dict:
+            grid=(8, 6), edges_only=False, metric_width=1280, write_images=True, local_window=32) -> dict:
     np = rc.require_numpy()
     Image = rc.require_pil()
     ref_full = rc.load_rgb(ref_path)
@@ -275,8 +317,11 @@ def compare(ref_path: Path, rec_path: Path, out_dir: Path, *, crop=None, mask_pa
         rc.fail("the mask leaves fewer than 16 pixels to compare")
 
     gref, grec = luminance(ref), luminance(rec)
+    # Masked pixels must not change any metric: edges are found on a recreation whose masked
+    # pixels are replaced by the reference's, so nothing under the mask can bleed into nearby edges.
+    grec_e = np.where(valid, grec, gref) if not valid.all() else grec
     e_ref, d_ref = edge_map(gref)
-    e_rec, d_rec = edge_map(grec)
+    e_rec, d_rec = edge_map(grec_e)
     inter = ((e_ref & d_rec) | (e_rec & d_ref)) & valid
     union = (e_ref | e_rec) & valid
     edge_iou = float(inter.sum() / union.sum()) if union.sum() else 1.0
@@ -284,7 +329,9 @@ def compare(ref_path: Path, rec_path: Path, out_dir: Path, *, crop=None, mask_pa
     metrics: dict = {"edge_iou": round(edge_iou, 4)}
     cols, rows = grid
     if not edges_only:
-        smap = ssim_map(gref.astype(np.float64), grec.astype(np.float64))
+        smap = ssim_map(gref.astype(np.float64), grec.astype(np.float64), valid)
+        k = max(4, int(round(local_window * scale)))
+        lmin, lpos = local_min_mean(smap, valid, k)
         mse = float(((ref - rec) ** 2)[valid].mean())
         lab_ref, lab_rec = srgb_to_lab(ref), srgb_to_lab(rec)
         de = ciede2000(lab_ref, lab_rec)
@@ -312,6 +359,8 @@ def compare(ref_path: Path, rec_path: Path, out_dir: Path, *, crop=None, mask_pa
         cells.sort(key=lambda c: c["delta_e_mean"], reverse=True)
         metrics.update({
             "ssim": round(float(smap[valid].mean()), 4),
+            "local_ssim": None if lmin is None else round(lmin, 4),
+            "local_ssim_box": None if lpos is None else [int(lpos[0] / scale), int(lpos[1] / scale), int(k / scale), int(k / scale)],
             "psnr_db": round(10 * math.log10(1.0 / mse), 3) if mse > 0 else None,
             "delta_e_mean": round(float(dv.mean()), 3),
             "delta_e_p95": round(float(np.percentile(dv, 95)), 3),
@@ -374,14 +423,28 @@ def status_of(failures: list[str], thresholds: dict | None) -> str:
     return "pass" if has_thresholds(thresholds) else "unchecked"
 
 
+MIN_METRICS = ("ssim", "edge_iou", "local_ssim")  # thresholds that must be at least T
+MAX_METRICS = ("delta_e_mean",)  # thresholds that must be at most T
+
+
 def evaluate(metrics: dict, thresholds: dict) -> list[str]:
+    """Failures for every threshold. A threshold whose metric was not computed fails: a check that
+    was asked for and not measured must never read as a pass."""
     failures = []
-    if thresholds.get("ssim") is not None and metrics.get("ssim") is not None and metrics["ssim"] < thresholds["ssim"]:
-        failures.append(f"ssim {metrics['ssim']} < {thresholds['ssim']}")
-    if thresholds.get("delta_e_mean") is not None and metrics.get("delta_e_mean") is not None and metrics["delta_e_mean"] > thresholds["delta_e_mean"]:
-        failures.append(f"delta_e_mean {metrics['delta_e_mean']} > {thresholds['delta_e_mean']}")
-    if thresholds.get("edge_iou") is not None and metrics["edge_iou"] < thresholds["edge_iou"]:
-        failures.append(f"edge_iou {metrics['edge_iou']} < {thresholds['edge_iou']}")
+    for key, thr in (thresholds or {}).items():
+        if thr is None:
+            continue
+        if key not in MIN_METRICS and key not in MAX_METRICS:
+            failures.append(f"unknown threshold {key!r} (known: {', '.join(MIN_METRICS + MAX_METRICS)})")
+            continue
+        value = metrics.get(key)
+        if value is None:
+            why = " (--edges-only computes edge IoU only)" if "ssim" not in metrics else ""
+            failures.append(f"{key} was not measured{why}, so its threshold {thr} cannot pass")
+        elif key in MIN_METRICS and value < thr:
+            failures.append(f"{key} {value} < {thr}")
+        elif key in MAX_METRICS and value > thr:
+            failures.append(f"{key} {value} > {thr}")
     return failures
 
 
@@ -392,6 +455,8 @@ def print_report(rep: dict, failures: list[str], status: str) -> None:
     if "ssim" in m:
         s = m["lab_shift"]
         print(f"ssim {m['ssim']}  psnr {m['psnr_db']} dB  dE2000 mean {m['delta_e_mean']} p95 {m['delta_e_p95']}  edge IoU {m['edge_iou']}")
+        if m.get("local_ssim") is not None:
+            print(f"local ssim (worst window) {m['local_ssim']} at box {m['local_ssim_box']}")
         print(f"lab shift dL {s['dL']:+.2f} da {s['da']:+.2f} db {s['db']:+.2f}  chroma x{m['chroma_ratio']}  contrast x{m['contrast_ratio']}")
         for c in m["worst_cells"][:3]:
             print(f"worst cell {c['cell']} box {c['box_ref_px']} dE {c['delta_e_mean']} dL {c['dL']:+.2f}")
@@ -405,9 +470,19 @@ def print_report(rep: dict, failures: list[str], status: str) -> None:
         print("result: FAIL - " + "; ".join(failures))
     elif status == "unchecked":
         print("result: unchecked - no thresholds set, nothing was judged "
-              "(add --fail-under-ssim, --fail-over-delta-e or --fail-under-edge-iou)")
+              "(add --fail-under-ssim, --fail-over-delta-e, --fail-under-edge-iou or --fail-under-local-ssim)")
     else:
         print("result: pass")
+
+
+def local_warning(rep: dict, thresholds: dict) -> None:
+    """Say so when one small region differs strongly but no local threshold is set to catch it."""
+    m = rep["metrics"]
+    if thresholds.get("local_ssim") is None and m.get("local_ssim") is not None and m["local_ssim"] < 0.75 \
+            and (m.get("ssim") or 0) >= 0.9:
+        rep["notes"].append(f"one small region differs strongly (local SSIM {m['local_ssim']} at {m['local_ssim_box']}) "
+                            f"while the global SSIM is {m['ssim']}; set --fail-under-local-ssim (shots.json "
+                            "thresholds.local_ssim) to judge small HUD elements")
 
 
 def parse_crop(value):
@@ -419,10 +494,13 @@ def parse_crop(value):
 
 
 def cmd_pair(args) -> int:
-    thresholds = {"ssim": args.fail_under_ssim, "delta_e_mean": args.fail_over_delta_e, "edge_iou": args.fail_under_edge_iou}
+    thresholds = {"ssim": args.fail_under_ssim, "delta_e_mean": args.fail_over_delta_e, "edge_iou": args.fail_under_edge_iou,
+                  "local_ssim": args.fail_under_local_ssim}
     rep = compare(args.reference, args.recreation, args.out, crop=parse_crop(args.crop), mask_path=args.mask,
-                  grid=parse_grid(args.grid), edges_only=args.edges_only, metric_width=args.metric_width)
+                  grid=parse_grid(args.grid), edges_only=args.edges_only, metric_width=args.metric_width,
+                  local_window=args.local_window)
     failures = aspect_failures(rep, args.allow_aspect_mismatch) + evaluate(rep["metrics"], thresholds)
+    local_warning(rep, thresholds)
     status = status_of(failures, thresholds)
     rep["thresholds"] = thresholds
     rep["failures"] = failures
@@ -448,7 +526,7 @@ def cmd_batch(args) -> int:
         sid = shot.get("id") or "shot"
         ref = root / shot.get("reference", "")
         rec = root / shot.get("recreation", "")
-        entry = {"id": sid, "reference": str(ref), "recreation": str(rec)}
+        entry = {"id": sid, "reference": str(ref), "recreation": str(rec), "thresholds": shot.get("thresholds") or {}}
         if not ref.is_file():
             entry["status"] = "missing-reference"
             bad += 1
@@ -461,12 +539,16 @@ def cmd_batch(args) -> int:
             if mask is not None and not mask.is_file():
                 rc.fail(f"{sid}: mask not found: {mask}")
             rep = compare(ref, rec, args.out / sid, crop=parse_crop(shot.get("crop")), mask_path=mask,
-                          grid=parse_grid(shot.get("grid", "8x6")), metric_width=args.metric_width)
+                          grid=parse_grid(shot.get("grid", "8x6")), metric_width=args.metric_width,
+                          edges_only=bool(shot.get("edges_only")), local_window=int(shot.get("local_window", 32)))
             fails = (aspect_failures(rep, bool(shot.get("allow_aspect_mismatch")) or args.allow_aspect_mismatch)
                      + evaluate(rep["metrics"], shot.get("thresholds") or {}))
+            local_warning(rep, shot.get("thresholds") or {})
             entry.update({"status": status_of(fails, shot.get("thresholds")), "failures": fails,
+                          "thresholds": shot.get("thresholds") or {}, "notes": rep["notes"],
                           "aspect_mismatch": rep.get("aspect_mismatch") if fails and rep.get("aspect_mismatch") else None,
-                          "metrics": {k: v for k, v in rep["metrics"].items() if k in ("ssim", "delta_e_mean", "edge_iou", "lab_shift")}})
+                          "metrics": {k: v for k, v in rep["metrics"].items()
+                                      if k in ("ssim", "delta_e_mean", "edge_iou", "lab_shift", "local_ssim", "local_ssim_box")}})
             bad += 1 if fails else 0
         summary.append(entry)
         print(f"{sid}: {entry['status']}" + (" - " + "; ".join(entry.get("failures", [])) if entry.get("failures") else ""))
@@ -490,6 +572,9 @@ def main() -> int:
     p.add_argument("--fail-under-ssim", type=float)
     p.add_argument("--fail-over-delta-e", type=float)
     p.add_argument("--fail-under-edge-iou", type=float)
+    p.add_argument("--fail-under-local-ssim", type=float,
+                   help="fail when any small window's SSIM is below this (catches one HUD element changing)")
+    p.add_argument("--local-window", type=int, default=32, help="window for local_ssim, in reference px (default 32)")
     p.add_argument("--allow-aspect-mismatch", action="store_true", help="compare even when the aspect ratios differ (stretches the recreation)")
     p.add_argument("--json", action="store_true")
     b = sub.add_parser("batch", help="compare every shot in a shots.json")
