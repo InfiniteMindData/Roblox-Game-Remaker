@@ -24,7 +24,7 @@ def harness_log(path: Path, presses):
     """presses: (key, frames, frame_duration); frames -1 = no visible change before the timeout."""
     lines = ['12:00:00.000  REMAKE_MEASURE {"k":"e","t":0,"n":"session"}  -  Client']
     for i, (key, f, fd) in enumerate(presses):
-        lines.append(f'12:00:01.{i:03d}  REMAKE_MEASURE {json.dumps({"k": "l", "t": 1 + i, "in": key, "f": f, "fd": fd, "dt": 0.02})}  -  Client')
+        lines.append(f'12:00:01.{i:03d}  REMAKE_MEASURE {json.dumps({"k": "l", "t": 1 + i, "in": key, "f": f, "fd": fd, "dt": f * fd})}  -  Client')
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 

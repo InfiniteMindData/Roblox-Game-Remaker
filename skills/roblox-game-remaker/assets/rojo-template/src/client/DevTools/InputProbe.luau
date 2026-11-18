@@ -33,6 +33,7 @@ function InputProbe.start(config: { [string]: any }): () -> ()
 	local lines: { string } = {}
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "RemakeInputProbe"
+	gui:SetAttribute("RemakeDeveloperOverlay", true)
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 1000
 	local label = Instance.new("TextLabel")

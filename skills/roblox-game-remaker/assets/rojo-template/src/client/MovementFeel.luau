@@ -118,11 +118,8 @@ function MovementFeel.start(options: Options): () -> ()
 				local desired = getMove() * top
 				local speedingUp = desired.Magnitude >= planar.Magnitude - 1e-6
 				local rampTime = if speedingUp then cfg.AccelerationTime or 0 else cfg.DecelerationTime or 0
-				local rate = MovementMath.rampRate(top, rampTime)
-				if airborne then
-					rate *= cfg.AirControl or 1
-				end
-				local nx, nz = MovementMath.approachPlanar(planar.X, planar.Z, desired.X, desired.Z, rate * dt)
+				local delta = MovementMath.steeringDelta(top, rampTime, dt, airborne, cfg.AirControl or 1)
+				local nx, nz = MovementMath.approachPlanar(planar.X, planar.Z, desired.X, desired.Z, delta)
 				planar = Vector3.new(nx, 0, nz)
 				if top > 0 then
 					humanoid:Move(planar / top, false)

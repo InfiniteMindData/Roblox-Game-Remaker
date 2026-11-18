@@ -86,4 +86,28 @@ T.describe("JumpAssist", function()
 	end)
 end)
 
+T.describe("air steering", function()
+	for _, ramp in { 0, 0.2 } do
+		for _, airborne in { false, true } do
+			for _, control in { 0, 0.5, 1 } do
+				T.it(`ramp={ramp} airborne={airborne} control={control}`, function()
+					local delta = MovementMath.steeringDelta(16, ramp, DT, airborne, control)
+					local x, z = MovementMath.approachPlanar(0, 0, 16, 0, delta)
+					T.truthy(x == x and z == z, "steering must be finite")
+					if airborne and control == 0 then
+						T.eq(x, 0)
+					elseif airborne and control == 0.5 and ramp == 0 then
+						T.truthy(x > 0 and x < 16, "fractional instant steering must be reduced")
+					end
+					local reverse = MovementMath.approachPlanar(16, 0, -16, 0, delta)
+					T.truthy(reverse == reverse and math.abs(reverse) <= 16)
+					if airborne and control == 0 then
+						T.eq(reverse, 16)
+					end
+				end)
+			end
+		end
+	end
+end)
+
 return nil
