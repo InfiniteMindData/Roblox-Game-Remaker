@@ -3,6 +3,46 @@
 Read this in Phase 1, before anything is measured or built. The goal is a pinned, cited
 picture of the original game that the breakdown can reference by evidence ID.
 
+## Clip-only feasibility (before research)
+
+For “here is a YouTube clip; I don't own the game”, separate **rights**, **media access** and
+**identifiability**. Homage mode permits original replacements, not ripping assets. A URL is
+not footage you have opened. Use the client's permitted media tools if available; these
+scripts stay network-free and contain no downloader. Respect access restrictions; never ask
+for credentials or bypass controls. If unavailable, record the URL as inaccessible and ask
+for a lawful local clip or timestamped screenshots, not controlled tests they cannot perform.
+
+Record in `remake/00-intake.md`: URL/title/version if known, timestamps requested, access result,
+local file path, extraction/crop/transcode steps and source evidence ID. Preserve the original
+file; record frame/timestamp mapping after edits. Never mark a thumbnail or remembered game
+as analyzed footage.
+
+Before the full breakdown, classify **each requested observable**, with a reason and the
+smallest missing observation. Use measurable only when the needed evidence is present:
+
+| Request | Evidence needed | Classification without it |
+|---|---|---|
+| Speed in studs/s | Known scale plus suitable camera/plane geometry and timestamps | Relative-only screen px/s if trackable; otherwise blocked |
+| Jump height/gravity | Known vertical scale and side-on/fixed suitable view | Relative-only screen trajectory; a ground homography cannot recover airborne height |
+| Jump timing | Takeoff/apex/landing visible and content update rate established | Measurable timing with frame uncertainty; occluded events are inferred or blocked |
+| Latency, coyote, buffer | Visible input synchronized with game output, repeated boundary trials | Blocked, never inferred from motion onset alone |
+| Ground-plane speed | Static camera and calibrated ground homography | Relative-only under moving/unknown perspective; do not reuse one px/stud scale |
+| HUD box at shown resolution | Uncropped readable frame and known source resolution | Measurable in pixels; cropped/unknown resolution may be relative-only |
+| HUD scaling/anchors | Same HUD state at a second aspect ratio/resolution (and known insets) | Inferred layout hypothesis at one resolution; not verified responsive behavior |
+| Feel/camera behavior | Several representative actions and geometry evidence | Inferred model; blocked for exact engine parameters |
+
+“Relative-only” is still a measurement in screen units, not a world-unit estimate. “Inferred”
+is a hypothesis from evidence; “blocked” has no defensible recovery from the available input.
+Do not promote an inferred scale to a tight ±. Record unknown scale, camera motion, visible
+inputs, aspect ratios, occlusions and content fps explicitly, even if the answer is “unknown”.
+
+Offer a **bounded provisional slice**: one short original greybox jump plus a HUD at the shown
+resolution, for example. Measure only identifiable timings/boxes; label guessed speed,
+assists and responsive rules ASSUMED or INFERRED. List what a second capture would resolve.
+Ask whether to proceed with those exact gaps, persist consent with `ledger.py accept-gap`
+(see recipes), and promise no measured 1:1 result for accepted guesses. If no media is
+accessible, offer an explicitly assumed prototype or stop; do not run fake analysis.
+
 ## 1. Pin the target
 
 Record in `remake/00-intake.md`:

@@ -46,8 +46,14 @@ several windows are open.
 | Execute | `execute_luau` (`datamodel_type`: Edit, Client or Server) |
 | Playtest | `get_studio_state`, `start_stop_play`, `get_console_output`, `screen_capture` (optional camera position and look-at) |
 | Input simulation | `character_navigation` (to a position or instance, with a speed multiplier), `user_keyboard_input`, `user_mouse_input` |
-| Assets | `search_asset`, `insert_asset`, `upload_image`, `store_image`, `generate_mesh`, `generate_material`, `generate_procedural_model`, `wait_job_finished` |
+| Assets | `search_asset`, `insert_asset`, `upload_image`, `store_image`, `generate_animation`, `generate_mesh`, `generate_material`, `generate_procedural_model`, `wait_job_finished` |
 | Docs | `http_get` (allowed Roblox documentation URLs), `skill` (Roblox-authored guidance) |
+
+`generate_animation` generates R15 animation from a text prompt, or converts an existing R6
+animation asset to R15; it can target a rig and request up to 10 seconds. Treat generated
+clips as placeholders, not recovered motion: compare keyposes, cadence, root travel and event
+timing against accessible reference frames before claiming a match. Checked against
+[the live Studio MCP docs](https://create.roblox.com/docs/studio/mcp); tool availability varies.
 
 Tool lists change. Use the tools your client actually lists, and do not call names you do not
 have.

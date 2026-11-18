@@ -121,10 +121,23 @@ def parse_config(path: Path) -> tuple[dict, dict, list[str]]:
 
 def find_config(remake: Path) -> Path | None:
     project = remake.resolve().parent
+    excluded = {".agents", ".claude", ".cursor", ".venv", "node_modules", "skills", "assets",
+                "templates", "template", "examples", "samples", "sample"}
+    candidates = []
     for p in sorted(project.rglob("Config.luau")):
-        if p.parent.name == "Remake" and "node_modules" not in p.parts:
-            return p
-    return None
+        relative = p.relative_to(project)
+        if p.parent.name != "Remake" or any(part.lower() in excluded for part in relative.parts[:-1]):
+            continue
+        # A symlink to an installed/template tree is not a project implementation either.
+        resolved = p.resolve()
+        if not resolved.is_relative_to(project):
+            continue
+        if any(part.lower() in excluded for part in resolved.relative_to(project).parts[:-1]):
+            continue
+        candidates.append(p)
+    if len(candidates) > 1:
+        rc.fail("multiple project Config.luau candidates; pass --config:\n" + "\n".join(str(p) for p in candidates))
+    return candidates[0] if candidates else None
 
 
 def main() -> int:
