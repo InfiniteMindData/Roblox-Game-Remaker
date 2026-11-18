@@ -89,13 +89,19 @@ Find and confirm the subject first instead of estimating coordinates from a full
 
 ```bash
 python scripts/find_mover.py remake/frames/jump01/manifest.json --preview remake/sheets/jump01-movers.png
-# -> candidate bbox (first-frame pixels), camera motion, and an --anchor-bbox when the camera pans
+# -> candidate bbox (first-frame pixels), camera motion (shift, zoom, roll), and an --anchor-bbox when the camera moves
 python scripts/frame_zoom.py remake/frames/jump01/f000240_t4.000000.png --region 880,580,110,140 --mark 912,604,48,96 --out remake/sheets/check.png
 ```
 
 Open the zoom and check that the box sits on the feature (rulers are in source-frame pixels).
+Under Roblox's default camera the player barely moves on screen while the world scrolls past:
+`find_mover` then reports it first with `kind: probable_player_camera_follows` (compact, upright,
+near the middle of the screen) instead of calling it HUD. Confirm it the same way.
 
-`motion_track.py` follows a template patch across frames with normalized cross-correlation.
+`motion_track.py` follows a template patch across frames with normalized cross-correlation, and
+removes the camera's own motion first. Match scores are in [-1, 1], and flat windows (walls,
+sky, UI panels) score 0, so the tracker cannot lock onto them. Frames are read one at a time (10 s of 1080p60 peaks at
+about 120 MB), so long clips are fine.
 
 ```bash
 python scripts/motion_track.py remake/frames/jump01/manifest.json \
@@ -106,8 +112,22 @@ python scripts/motion_track.py remake/frames/jump01/manifest.json \
 ```
 
 - `--bbox` is the feature on the first frame: a character's head, feet, or a distinctive marking.
-- `--anchor-bbox` is a static background feature. Its motion is subtracted to cancel camera pans,
-  which only works for translation-like camera motion.
+- Camera motion is measured over the whole frame by default (`--camera global`): textured patches
+  spread over the view are matched every frame, and a robust fit gives the camera's shift, zoom
+  (a FOV change such as a sprint FOV kick, or a dolly) and roll, chained back to the first frame.
+  The subject, other movers and the HUD drop out as outliers. Positions are then in first-frame
+  pixels, so **`--px-per-unit` must be measured on the first frame** (at its zoom). The `camera`
+  block of the output says what was measured (`zoom_range`, `roll_range_deg`, `keyframes`,
+  `unmeasured_frames`); samples on frames where the fit failed are left out ("camera motion not
+  measured").
+- `--anchor-bbox` is a static background feature at the subject's depth. With it (`--camera
+  anchor`, the default when given), the anchor gives the camera shift and the whole-frame model
+  the zoom and roll. When the anchor leaves the view or its match slips, the whole-frame model
+  takes over from that sample (`anchor_handoff_sample`) instead of voiding the track. Prefer an
+  anchor when the background is at a very different depth from the subject (parallax).
+- `--camera none` assumes a fixed camera; with `--anchor-bbox` it cancels the anchor's shift only,
+  as the old tracker did. A zoom then cannot be removed: when the anchor's size changes by more than 2%
+  the result says so and is marked unreliable.
 - `--px-per-unit` comes from a known size **at the same depth as the subject**: the
   character's height in pixels divided by its height in studs, or a doorway of known size.
   Without it, results stay in pixels.
@@ -116,7 +136,8 @@ python scripts/motion_track.py remake/frames/jump01/manifest.json \
   fall gravities mean the original uses fall-gravity scaling (see `movement-camera-feel.md`).
 - `--analyze speed` fits steady-state ground speed and time to reach 90% of it.
 
-**Perspective caution.** Pixel tracking measures image-plane motion. One `--px-per-unit` is only
+**Perspective caution.** Pixel tracking measures image-plane motion. The camera model removes
+camera zoom and roll, not the subject's own motion toward or away from the camera. One `--px-per-unit` is only
 metric when the motion is roughly parallel to the image plane at a constant camera distance.
 Prefer side-on test clips. For third-person or angled footage, convert through the ground plane
 instead (§5a). For motion along the view axis, track with `--scale-search`: the reported `scale`
@@ -143,7 +164,8 @@ python scripts/ledger.py import remake remake/tracks/run3d-ground.json --evidenc
   the ground contact. Use `--contact center` only for a feature that lies on the ground, such as
   a shadow.
 - The homography needs a static camera. With a follow camera, measure each stretch where the
-  camera holds still, or re-mark the corners per shot.
+  camera holds still, or re-mark the corners per shot. If the track's `camera.moves` is true, its
+  `x_px`/`y_px` are screen positions on a moving view: do not convert them through one homography.
 - If the source track has low-score samples, `camera_solve` withholds the measurements. Fix the
   track (smaller box, `--scale-search`, a shorter range) instead of importing a wrong number.
 
@@ -154,8 +176,15 @@ HUDs all degrade tracking. The tools now report rather than hide this; read the 
 |---|---|---|
 | `content_fps` and "repeat the previous position" | 30 fps (or lower) content in a faster container | Nothing: analyses use the first frame of each repeat, and `time_precision_s` is one content frame |
 | "low match scores" with smooth motion | Blur or appearance change; positions are usually still right | Check `fit_rms` and the stds; a smaller, sharper feature helps |
-| `excluded_samples`, `excluded` per sample | Anchor lost, or the subject jumped or stalled with a low score (HUD occlusion, lost track) | Those samples are left out of the fits; check the remaining range covers the event |
-| `reliable: false` / UNRELIABLE | More than 20% of samples unusable | Fix the track; `ledger.py` refuses it, `camera_solve` withholds its numbers |
+| `excluded_samples`, `excluded` per sample | Anchor lost, camera motion not measured, or the subject lost (see below) | Those samples are left out of the fits; check the remaining range covers the event |
+| `first_lost_sample`, "subject lost (...)" | The tracker's own checks failed, at any match score: the found patch does not match back into the previous frame (forward-backward), a jump larger than the subject, a stall with a weakening match (an occluder), or a reversal on a doubtful match (a look-alike crossing) | It coasts on the predicted motion and resumes when a match fits it again; check the named frame with `frame_zoom.py --mark` |
+| "re-locked ... on appearance alone" | After a long loss the match no longer fit any predicted motion | `reliable: false`: confirm it is the same subject, or track a shorter range |
+| "a look-alike matched almost as well" (`ambiguous_samples`) | Another spot matched within 0.05 (an identical character, or background texture under a small subject) | The match that fits the motion so far was kept; confirm the identity on those frames |
+| "the camera zoomed N%" | FOV change or dolly, divided out frame by frame | Measure `--px-per-unit` on the first frame |
+| "anchor ... cannot remove" a zoom | `--camera none` with an anchor on zooming footage | Use the default camera model |
+| "the anchor was lost or left the view at sample N" | Follow camera | Nothing: the whole-frame model carries on from there |
+| "camera motion could not be measured" | Too little background texture | Positions are screen positions; if the camera moves, give a textured `--anchor-bbox` |
+| `reliable: false` / UNRELIABLE | More than 20% of samples unusable, a zoom that was not removed, or a re-lock on appearance alone | Fix the track; `ledger.py` refuses it, `camera_solve` withholds its numbers |
 | `steady_speed_halves` disagree | Slow drift (compression, a changing anchor) | The uncertainty is widened to cover it; consider another anchor |
 | `scale_range` changes with `--px-per-unit` | Perspective | Use `camera_solve.py ground` (§5a) |
 

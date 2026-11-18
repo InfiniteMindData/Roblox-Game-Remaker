@@ -36,6 +36,11 @@ research → measure → document → translate → build → compare → fix
 | `probe_video.py` | FPS, variable frame rate, duplicate frames, effective update rate |
 | `extract_frames.py` | Exact frames with index and timestamp manifests (all, every, range, times, scene cuts) |
 | `contact_sheet.py` | Labeled frame grids, including reference/recreation pairs |
+| `motion_track.py` | Feature tracking with whole-frame camera compensation (shift, zoom, roll; anchor hand-off) and lost-subject checks; jump fits (rise and fall gravity) and acceleration fits |
+| `camera_solve.py` | Vertical FOV, pitch and height from marked lines or a known object; ground-plane conversion of third-person tracks to studs |
+| `remake_calc.py` | Units, horizontal/vertical FOV, frames, jump solving, acceleration, spring parameters |
+| `fit_curve.py` | Rank every template easing curve, a spring and an exponential approach against tracked samples; flags fits the frame rate cannot tell apart |
+| `visual_compare.py` | SSIM, CIEDE2000, Lab shifts, edge IoU, heatmaps, lighting hints, batch shot lists |
 | `motion_track.py` | Feature tracking with camera-pan compensation; jump fits (rise and fall gravity) and acceleration fits |
 | `camera_solve.py` | Vertical FOV, pitch and height with uncertainties from marked lines or a known object; letterbox viewport; ground-plane conversion of third-person tracks to studs |
 | `remake_calc.py` | Units, horizontal/vertical FOV, frames, jump solving (metres or feet converted to studs), acceleration, spring parameters |
@@ -58,7 +63,7 @@ research → measure → document → translate → build → compare → fix
 | `fidelity_report.py` | Score every shot, metric and clip against tolerance each iteration; history, scorecard, diff-log entry; exit 1 on a regression |
 | `ledger.py` | Evidence and measurements with automatic IDs; scoped gap acceptance (who/when/why); tracker import; targets |
 | `config_check.py` | `Config.luau` values against their measurements (drift, missing sources, assumptions) |
-| `find_mover.py` / `frame_zoom.py` | Detect moving subjects and suggest tracking boxes; zoomed crops with pixel rulers |
+| `find_mover.py` / `frame_zoom.py` | Detect moving subjects (also the player under a follow camera) and suggest tracking boxes; zoomed crops with pixel rulers |
 | `pose_track.py` | Multi-point tracking: 2D joint angles, cycle period, keypose table |
 | `overlay.py` | Blend, diff, checker, wipe and onion-skin views |
 | `studio_snippets.py` | Greybox and projection/GUI-policy shot Luau for Studio/MCP, log cleanup, bindings |
