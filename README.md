@@ -111,7 +111,7 @@ Install **ffmpeg/ffprobe** from your package manager for video analysis. Windows
 use `$env:SKILL_ROOT` / `$env:PROJECT_ROOT` and activate `.venv/Scripts/Activate.ps1`. Full
 layout-specific instructions: [installation](docs/INSTALLATION.md).
 
-**Working in this repo?** Nothing to install: `.claude/skills/roblox-game-remaker` links to the
+**Working in this repo?** No separate skill install is needed: `.claude/skills/roblox-game-remaker` links to the
 skill, so Claude Code loads it in every session started here (on Windows, clone with
 `git clone -c core.symlinks=true` so the link checks out as a link).
 
@@ -133,8 +133,7 @@ Ask in plain language, for example:
 Try the pipeline on synthetic footage with known answers:
 
 ```bash
-cd skills/roblox-game-remaker
-bash examples/demo/run_demo.sh /tmp/remake-demo
+bash "$SKILL_ROOT/examples/demo/run_demo.sh" "$PROJECT_ROOT/remake-demo"
 ```
 
 ## Rights

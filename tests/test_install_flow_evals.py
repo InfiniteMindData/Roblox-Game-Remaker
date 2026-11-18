@@ -46,6 +46,22 @@ class InstallFlowTests(unittest.TestCase):
                 nested.mkdir()
                 self.assertEqual(run(installed / 'scripts/breakdown_init.py', nested, '--game', 'T').returncode, 2)
 
+    def test_init_fills_existing_media_workspace_without_overwrite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            remake = project / 'remake'
+            (remake / 'media').mkdir(parents=True)
+            media = remake / 'media/clip.mp4'
+            media.write_bytes(b'preserved user media')
+            proc = run(SCRIPTS / 'remake_status.py', remake, '--init', '--game', 'T', '--json')
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            intake = remake / '00-intake.md'
+            self.assertTrue(intake.is_file())
+            intake.write_text('preserved user intake')
+            self.assertEqual(run(SCRIPTS / 'remake_status.py', remake, '--init', '--json').returncode, 0)
+            self.assertEqual(intake.read_text(), 'preserved user intake')
+            self.assertEqual(media.read_bytes(), b'preserved user media')
+
     def test_acceptance_is_scoped_persisted_and_stale_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
             remake = Path(tmp) / 'remake'
@@ -86,6 +102,12 @@ class InstallFlowTests(unittest.TestCase):
 
 
 class OutcomeTests(unittest.TestCase):
+    def test_example_expectation_names_actual_synthetic_input(self):
+        expected = json.loads((ROOT / 'evals/outcomes-jump.json').read_text())
+        generator = (SKILL / 'examples/demo/make_demo_footage.py').read_text()
+        source = next(name for name in expected['files'] if '/media/' in name)
+        self.assertIn(Path(source).name, generator)
+
     def test_fabricated_reply_is_not_outcome_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

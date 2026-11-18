@@ -250,9 +250,11 @@ def main() -> int:
     ap.add_argument("--mode", choices=("measured", "provisional"), default="provisional", help="measured ignores gap acceptances; provisional permits scoped consent")
     ap.add_argument("--require-phase", type=int, help="exit 1 unless earlier gates are satisfied (or accepted in provisional mode)")
     args = ap.parse_args()
-    if args.init and not args.remake.exists():
+    if args.init:
         if args.remake.name != "remake":
             rc.fail("--init requires PROJECT_ROOT/remake")
+        if args.remake.exists() and not args.remake.is_dir():
+            rc.fail(f"not a directory: {args.remake}")
         proc = subprocess.run([sys.executable, str(HERE / "breakdown_init.py"), str(args.remake.parent),
                                "--game", args.game], capture_output=True, text=True)
         if proc.returncode:
