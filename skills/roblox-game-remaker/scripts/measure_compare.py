@@ -169,8 +169,9 @@ def derive(samples, events, latency=None, latency_key=None, grounded=None, inter
         if latency_key and lat["key"] != latency_key:
             continue
         if lat["f"] is not None and lat["f"] >= 0:
-            fd = lat["fd"] if lat.get("fd") else 1 / 60
-            out["input_latency"].append(lat["f"] * fd)
+            elapsed = lat.get("dt")
+            if isinstance(elapsed, (int, float)) and math.isfinite(elapsed) and elapsed >= 0:
+                out["input_latency"].append(float(elapsed))
             out["input_latency_frames"].append(float(lat["f"]))
     for name, (a, b) in (intervals or {}).items():
         vals = out.setdefault(name, [])

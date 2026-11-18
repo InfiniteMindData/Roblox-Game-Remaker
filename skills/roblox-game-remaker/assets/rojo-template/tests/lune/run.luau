@@ -12,6 +12,9 @@ local specs = {
 	"./Easing.spec",
 	"./UIScaler.spec",
 	"./SimRecorder.spec",
+	"./ShotCamera.spec",
+	"./LatencyProbe.spec",
+	"./MeasurementHarness.spec",
 }
 
 for _, spec in specs do

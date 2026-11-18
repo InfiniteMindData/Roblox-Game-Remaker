@@ -1,25 +1,33 @@
 # Recipes: exact command sequences
 
-Load this instead of several references when the task matches a recipe. Paths are relative
-to the skill directory; `remake/` is the user's workspace and `clip.mp4` stands for their
-footage. Each recipe ends with a "done when" check. When a step needs judgment, the recipe names
-the reference to read.
+Commands use two different roots: `SKILL_ROOT` is the absolute installed folder containing
+`SKILL.md`; `PROJECT_ROOT` is the user's project, outside that folder. Resolve them before
+running anything. Plugin caches and global skills installs are not workspaces. The examples
+below use a POSIX shell; on Windows PowerShell use `$env:SKILL_ROOT` / `$env:PROJECT_ROOT`
+and `.venv/Scripts/python.exe`. After bootstrap, `python` means the project environment's Python.
+Every script is called through the skill's own path; all artifacts are project-relative because
+we explicitly change to `PROJECT_ROOT`. `clip.mp4` stands for local user-supplied footage.
 
 ## 1. Start a remake (first session)
 
 ```bash
-python scripts/doctor.py
-python scripts/breakdown_init.py . --game "Game Name" --version 1.0 --platform "PC, gamepad"
-python scripts/remake_status.py remake --write
+export SKILL_ROOT="/absolute/path/to/installed/roblox-game-remaker"
+export PROJECT_ROOT="/absolute/path/to/your/project"
+cd "$PROJECT_ROOT"
+python -m venv "$PROJECT_ROOT/.venv"
+. "$PROJECT_ROOT/.venv/bin/activate"
+python -m pip install -r "$SKILL_ROOT/scripts/requirements.txt"
+python "$SKILL_ROOT/scripts/doctor.py" "$PROJECT_ROOT"
+python "$SKILL_ROOT/scripts/remake_status.py" "$PROJECT_ROOT/remake" --init --game "Game Name" --write
 ```
 
 Then fill `remake/00-intake.md` with the user (rights mode, slice, devices, tier), record the
 first sources, and optionally seed `Config.luau` with a genre preset:
 
 ```bash
-python scripts/ledger.py add-evidence remake --type video --title "Level 1 run" --source remake/media/clip.mp4
-python scripts/preset.py list
-python scripts/preset.py apply platformer --config src/shared/Remake/Config.luau --in-place
+python "$SKILL_ROOT/scripts/ledger.py" add-evidence remake --type video --title "Level 1 run" --source remake/media/clip.mp4
+python "$SKILL_ROOT/scripts/preset.py" list
+python "$SKILL_ROOT/scripts/preset.py" apply platformer --config src/shared/Remake/Config.luau --in-place
 ```
 
 Done when `remake_status.py` shows phase 0 as pass.
@@ -27,21 +35,40 @@ Done when `remake_status.py` shows phase 0 as pass.
 ## 2. Resume (every later session)
 
 ```bash
-python scripts/remake_status.py remake --write
+python "$SKILL_ROOT/scripts/remake_status.py" remake --write
 ```
 
 Read `remake/STATUS.md`, do its next action, and run it again afterwards.
 
+### Provisional gaps (only after explicit user consent)
+
+`ledger.py accept-gap` records the named person, current date, reason and input fingerprint in
+`remake/acceptances.json`. Example:
+
+```bash
+python "$SKILL_ROOT/scripts/ledger.py" accept-gap remake --scope MOVE-001 --by "Owner" --reason "Use assumed jump for the greybox only; scale unknown"
+python "$SKILL_ROOT/scripts/remake_status.py" remake --write
+```
+
+Use an ASSUMED/UNKNOWN/INFERRED entry ID for that entry, or `research`, `analysis`, `translation`,
+`build` for an explicitly bounded phase gap. Never use a generic blanket acceptance. The
+reason must name the slice and limitation; do not invent the user's consent. Status preserves
+`ok: false` on waived gates and labels them **provisional**, not verified. Unaccepted gaps stay
+blocked. Use `remake_status.py remake --mode measured` to ignore acceptances; `--mode
+provisional` (the default) routes accepted work without passing its measured gates. Strict breakdown checking still reports ASSUMED warnings. Input changes invalidate
+acceptance; ask again if the scope changed. Verification and delivery cannot be waived.
+A phase gate being satisfied is not a claim that the game's fidelity is measured.
+
 ## 3. Match a jump
 
 ```bash
-python scripts/probe_video.py clip.mp4 --dupes
-python scripts/extract_frames.py clip.mp4 --out remake/frames/jump01 --mode range --start 240 --end 320
-python scripts/find_mover.py remake/frames/jump01/manifest.json --preview remake/sheets/jump01-movers.png
-python scripts/frame_zoom.py remake/frames/jump01/<first frame>.png --region <around the box> --mark <bbox> --out remake/sheets/jump01-check.png
-python scripts/motion_track.py remake/frames/jump01/manifest.json --bbox <bbox> --px-per-unit <px per stud> --analyze jump --out remake/tracks/jump01.json
-python scripts/ledger.py import remake remake/tracks/jump01.json --evidence EV-00N
-python scripts/remake_calc.py jump --apex <apex> --rise-time <rise> --fall-time <fall> --luau
+python "$SKILL_ROOT/scripts/probe_video.py" clip.mp4 --dupes
+python "$SKILL_ROOT/scripts/extract_frames.py" clip.mp4 --out remake/frames/jump01 --mode range --start 240 --end 320
+python "$SKILL_ROOT/scripts/find_mover.py" remake/frames/jump01/manifest.json --preview remake/sheets/jump01-movers.png
+python "$SKILL_ROOT/scripts/frame_zoom.py" remake/frames/jump01/<first frame>.png --region <around the box> --mark <bbox> --out remake/sheets/jump01-check.png
+python "$SKILL_ROOT/scripts/motion_track.py" remake/frames/jump01/manifest.json --bbox <bbox> --px-per-unit <px per stud> --analyze jump --out remake/tracks/jump01.json
+python "$SKILL_ROOT/scripts/ledger.py" import remake remake/tracks/jump01.json --evidence EV-00N
+python "$SKILL_ROOT/scripts/remake_calc.py" jump --apex <apex> --rise-time <rise> --fall-time <fall> --luau
 ```
 
 Get `--px-per-unit` from `remake_calc.py scale --pixels <character height px> --size <height in studs>`.
@@ -49,9 +76,9 @@ Put the values in Config (`Gravity`, `JumpApex`, `FallGravityMultiplier`) with `
 entries, then:
 
 ```bash
-python scripts/config_check.py remake
-python scripts/ledger.py targets remake --tier A
-python scripts/measure_compare.py remake/logs/run-01.log --targets remake/targets.json
+python "$SKILL_ROOT/scripts/config_check.py" remake
+python "$SKILL_ROOT/scripts/ledger.py" targets remake --tier A
+python "$SKILL_ROOT/scripts/measure_compare.py" remake/logs/run-01.log --targets remake/targets.json
 ```
 
 Done when `jump_apex`, `jump_rise_time` and `jump_fall_time` pass.
@@ -62,7 +89,7 @@ Use a side-on standing-start clip (and a stop clip for deceleration). Run the sa
 recipe 3, with `--analyze speed`. Add `--anchor-bbox` from `find_mover.py` when the camera pans.
 
 ```bash
-python scripts/remake_calc.py accel --top-speed <steady_speed> --t90 <t90> --luau
+python "$SKILL_ROOT/scripts/remake_calc.py" accel --top-speed <steady_speed> --t90 <t90> --luau
 ```
 
 Use `AccelerationTime` (linear model) in `Config.Movement`. Done when `ground_speed` and
@@ -71,28 +98,28 @@ Use `AccelerationTime` (linear model) in `Config.Movement`. Done when `ground_sp
 ## 5. Match camera FOV and follow
 
 1. Find the FOV convention (`roblox-translation.md` §2), then convert it:
-   `python scripts/remake_calc.py fov --horizontal 90 --aspect 16:9`. If the game does not state
+   `python "$SKILL_ROOT/scripts/remake_calc.py" fov --horizontal 90 --aspect 16:9`. If the game does not state
    it, solve it from a frame (recipe 13): `camera_solve.py vanishing` also gives pitch and height.
 2. Lag: track the character's screen position after a sudden start (`motion_track.py` without
    `--px-per-unit`), read the overshoot and settle time, then
-   `python scripts/remake_calc.py spring --overshoot <frac> --settle-time <s> --luau`.
+   `python "$SKILL_ROOT/scripts/remake_calc.py" spring --overshoot <frac> --settle-time <s> --luau`.
 3. Set `Config.Camera` (`FieldOfView`, `Distance`, `PivotOffset`, `FollowFrequency`, `FollowDamping`).
 4. Verify with a matched shot (recipe 7) and `overlay.py checker` for alignment.
 
 ## 6. Recreate a HUD screen
 
 ```bash
-python scripts/frame_zoom.py hud.png --region 0,940,520,140 --scale 3 --out remake/ui/zoom-health.png
-python scripts/palette_extract.py hud.png --region <bar fill> --k 2
-python scripts/ui_measure.py remake/ui/hud-boxes.json --luau > remake/ui/HudLayout.luau
+python "$SKILL_ROOT/scripts/frame_zoom.py" hud.png --region 0,940,520,140 --scale 3 --out remake/ui/zoom-health.png
+python "$SKILL_ROOT/scripts/palette_extract.py" hud.png --region <bar fill> --k 2
+python "$SKILL_ROOT/scripts/ui_measure.py" remake/ui/hud-boxes.json --luau > remake/ui/HudLayout.luau
 ```
 
 Build the ScreenGui with the generated values, set the attribute `RemakeScaleUI = true`, capture at
 the reference resolution, then:
 
 ```bash
-python scripts/visual_compare.py pair hud.png remake/captures/hud.png --out remake/diff/hud
-python scripts/ui_measure.py --compare remake/ui/hud-boxes.json remake/ui/hud-boxes-rec.json --tolerance 0.5
+python "$SKILL_ROOT/scripts/visual_compare.py" pair hud.png remake/captures/hud.png --out remake/diff/hud
+python "$SKILL_ROOT/scripts/ui_measure.py" --compare remake/ui/hud-boxes.json remake/ui/hud-boxes-rec.json --tolerance 0.5
 ```
 
 Done when every element is within tolerance at both aspect ratios (`ui-recreation.md`).
@@ -100,9 +127,9 @@ Done when every element is within tolerance at both aspect ratios (`ui-recreatio
 ## 7. Match lighting and color for a shot
 
 ```bash
-python scripts/studio_snippets.py apply-shot remake/shots.json --id SHOT-03     # run with execute_luau (Client)
-python scripts/visual_compare.py pair remake/frames/ref/shot03.png remake/captures/SHOT-03.png --out remake/diff/shot03
-python scripts/overlay.py checker remake/frames/ref/shot03.png remake/captures/SHOT-03.png --out remake/diff/shot03/checker.png
+python "$SKILL_ROOT/scripts/studio_snippets.py" apply-shot remake/shots.json --id SHOT-03     # run with execute_luau (Client)
+python "$SKILL_ROOT/scripts/visual_compare.py" pair remake/frames/ref/shot03.png remake/captures/SHOT-03.png --out remake/diff/shot03
+python "$SKILL_ROOT/scripts/overlay.py" checker remake/frames/ref/shot03.png remake/captures/SHOT-03.png --out remake/diff/shot03/checker.png
 ```
 
 Align first (edge IoU, checker), then follow the `lab_shift` hints in `graphics-lighting.md` §3:
@@ -112,9 +139,9 @@ change one property group per iteration and log it in `diff-log.md`. Batch all s
 ## 8. Recreate an animation cycle
 
 ```bash
-python scripts/extract_frames.py clip.mp4 --out remake/frames/run-cycle --mode range --start <a> --end <b>
-python scripts/overlay.py onion remake/frames/run-cycle/manifest.json --every 2 --out remake/sheets/run-onion.png
-python scripts/pose_track.py remake/frames/run-cycle/manifest.json --point hip=x,y --point knee=x,y --point foot=x,y \
+python "$SKILL_ROOT/scripts/extract_frames.py" clip.mp4 --out remake/frames/run-cycle --mode range --start <a> --end <b>
+python "$SKILL_ROOT/scripts/overlay.py" onion remake/frames/run-cycle/manifest.json --every 2 --out remake/sheets/run-onion.png
+python "$SKILL_ROOT/scripts/pose_track.py" remake/frames/run-cycle/manifest.json --point hip=x,y --point knee=x,y --point foot=x,y \
   --joint knee=hip,knee,foot --segment thigh=hip,knee --cycle foot.y --table remake/anim/run-keys.md
 ```
 
@@ -127,7 +154,7 @@ Key the clip in Blender or the Animation Editor from the table (`animation-analy
 Write `remake/layout-level1.json` from the `ENV` entry (sizes and positions in meters or studs), then:
 
 ```bash
-python scripts/studio_snippets.py greybox remake/layout-level1.json --studs-per-meter 3.5714 --out remake/greybox-level1.luau
+python "$SKILL_ROOT/scripts/studio_snippets.py" greybox remake/layout-level1.json --studs-per-meter 3.5714 --out remake/greybox-level1.luau
 ```
 
 Run it with MCP `execute_luau` (Edit), or paste it into the command bar. Playtest the gaps with
@@ -140,9 +167,9 @@ without the intended move.
 2. On the headset, press every control. Copy the Output, then:
 
 ```bash
-python scripts/studio_snippets.py extract-log console.txt --out remake/logs/quest-probe.log
-python scripts/studio_snippets.py inputs remake/logs/quest-probe.log --out remake/ui/quest-bindings.md
-python scripts/ledger.py add-evidence remake --type capture --title "Quest 3 InputProbe log" --source remake/logs/quest-probe.log --analysis "studio_snippets inputs"
+python "$SKILL_ROOT/scripts/studio_snippets.py" extract-log console.txt --out remake/logs/quest-probe.log
+python "$SKILL_ROOT/scripts/studio_snippets.py" inputs remake/logs/quest-probe.log --out remake/ui/quest-bindings.md
+python "$SKILL_ROOT/scripts/ledger.py" add-evidence remake --type capture --title "Quest 3 InputProbe log" --source remake/logs/quest-probe.log --analysis "studio_snippets inputs"
 ```
 
 3. Calibrate `Config.Haptics.SidePositions` (`vr-quest.md` §5). Done when every `VR-###` binding
@@ -151,7 +178,7 @@ python scripts/ledger.py add-evidence remake --type capture --title "Quest 3 Inp
 ## 11. Footage you cannot access
 
 ```bash
-python scripts/ledger.py add-evidence remake --type video --title "<what it was>" --source <url> --inaccessible --notes "<error>"
+python "$SKILL_ROOT/scripts/ledger.py" add-evidence remake --type video --title "<what it was>" --source <url> --inaccessible --notes "<error>"
 ```
 
 Tell the user plainly that you could not open it, give the capture guide
@@ -160,12 +187,12 @@ Tell the user plainly that you could not open it, give the capture guide
 ## 12. Before delivery
 
 ```bash
-python scripts/breakdown_check.py remake --strict
-python scripts/config_check.py remake --strict
-python scripts/visual_compare.py batch remake/shots.json --out remake/diff
-python scripts/measure_compare.py remake/logs/<latest>.log --targets remake/targets.json
-python scripts/fidelity_report.py remake --label "delivery check"
-python scripts/remake_status.py remake --write
+python "$SKILL_ROOT/scripts/breakdown_check.py" remake --strict
+python "$SKILL_ROOT/scripts/config_check.py" remake --strict
+python "$SKILL_ROOT/scripts/visual_compare.py" batch remake/shots.json --out remake/diff
+python "$SKILL_ROOT/scripts/measure_compare.py" remake/logs/<latest>.log --targets remake/targets.json
+python "$SKILL_ROOT/scripts/fidelity_report.py" remake --label "delivery check"
+python "$SKILL_ROOT/scripts/remake_status.py" remake --write
 ```
 
 Fill `remake/delivery-report.md` from these outputs and `remake/scorecard.md`, using the verification labels
@@ -176,16 +203,16 @@ Fill `remake/delivery-report.md` from these outputs and `remake/scorecard.md`, u
 For a camera that looks down at an angle, where one pixels-per-stud scale is wrong.
 
 ```bash
-python scripts/extract_frames.py clip.mp4 --out remake/frames/cam01 --mode range --start <a> --end <b>
-python scripts/frame_zoom.py remake/frames/cam01/<first frame>.png --region <around a ground rectangle> --scale 4 --out remake/sheets/cam01-corners.png
-python scripts/camera_solve.py vanishing --image 1920x1080 --lines-x "<x1,y1,x2,y2;...>" --lines-z "<...>" \
+python "$SKILL_ROOT/scripts/extract_frames.py" clip.mp4 --out remake/frames/cam01 --mode range --start <a> --end <b>
+python "$SKILL_ROOT/scripts/frame_zoom.py" remake/frames/cam01/<first frame>.png --region <around a ground rectangle> --scale 4 --out remake/sheets/cam01-corners.png
+python "$SKILL_ROOT/scripts/camera_solve.py" vanishing --image 1920x1080 --lines-x "<x1,y1,x2,y2;...>" --lines-z "<...>" \
   --known-height <base_x,base_y,top_x,top_y,height> --luau --out remake/camera/cam01.json
-python scripts/find_mover.py remake/frames/cam01/manifest.json
-python scripts/motion_track.py remake/frames/cam01/manifest.json --bbox <whole body> --scale-search --out remake/tracks/cam01.json
-python scripts/camera_solve.py ground --image 1920x1080 --corners "<x,y;x,y;x,y;x,y>" --rect <W>x<D> \
+python "$SKILL_ROOT/scripts/find_mover.py" remake/frames/cam01/manifest.json
+python "$SKILL_ROOT/scripts/motion_track.py" remake/frames/cam01/manifest.json --bbox <whole body> --scale-search --out remake/tracks/cam01.json
+python "$SKILL_ROOT/scripts/camera_solve.py" ground --image 1920x1080 --corners "<x,y;x,y;x,y;x,y>" --rect <W>x<D> \
   --track remake/tracks/cam01.json --contact bottom --analyze speed --out remake/tracks/cam01-ground.json
-python scripts/ledger.py import remake remake/camera/cam01.json --evidence EV-00N
-python scripts/ledger.py import remake remake/tracks/cam01-ground.json --evidence EV-00N
+python "$SKILL_ROOT/scripts/ledger.py" import remake remake/camera/cam01.json --evidence EV-00N
+python "$SKILL_ROOT/scripts/ledger.py" import remake remake/tracks/cam01-ground.json --evidence EV-00N
 ```
 
 Mark at least two long lines per ground direction (floor seams, wall bases, road edges) and a
@@ -200,7 +227,7 @@ withholds measurements, fix the track first (`footage-analysis.md` §5a).
 After a jump or run passes `measure_compare`, check the whole motion over time.
 
 ```bash
-python scripts/clip_compare.py remake/tracks/jump01.json remake/logs/run-05.log --targets remake/targets.json \
+python "$SKILL_ROOT/scripts/clip_compare.py" remake/tracks/jump01.json remake/logs/run-05.log --targets remake/targets.json \
   --out remake/diff/jump01-it5/clip.json --plot remake/diff/jump01-it5/clip.png
 ```
 
@@ -209,7 +236,7 @@ ground` conversion). To compare two videos instead (a screen recording of the bu
 reference), extract both and pass the manifests:
 
 ```bash
-python scripts/clip_compare.py remake/frames/jump01/manifest.json remake/frames/build-jump/manifest.json \
+python "$SKILL_ROOT/scripts/clip_compare.py" remake/frames/jump01/manifest.json remake/frames/build-jump/manifest.json \
   --ref-bbox <x,y,w,h> --rec-bbox <x,y,w,h> --ref-px-per-unit <ref px/stud> --rec-px-per-unit <build px/stud> \
   --align frames --ref-frame <takeoff frame> --rec-frame <takeoff frame> --plot remake/diff/jump01-video.png
 ```
@@ -221,10 +248,10 @@ gravity). Done when `clip_compare` exits 0 at the agreed tier and the result is 
 ## 15. Identify a UI tween, camera ease or acceleration ramp
 
 ```bash
-python scripts/extract_frames.py clip.mp4 --out remake/frames/menu-open --mode range --start <a> --end <b>
-python scripts/motion_track.py remake/frames/menu-open/manifest.json --bbox <panel edge> --out remake/tracks/menu-open.json
-python scripts/fit_curve.py --track remake/tracks/menu-open.json --field x_px --plot remake/ui/menu-open-fit.png --luau --out remake/ui/menu-open-fit.json
-python scripts/ledger.py import remake remake/ui/menu-open-fit.json --evidence EV-00N
+python "$SKILL_ROOT/scripts/extract_frames.py" clip.mp4 --out remake/frames/menu-open --mode range --start <a> --end <b>
+python "$SKILL_ROOT/scripts/motion_track.py" remake/frames/menu-open/manifest.json --bbox <panel edge> --out remake/tracks/menu-open.json
+python "$SKILL_ROOT/scripts/fit_curve.py" --track remake/tracks/menu-open.json --field x_px --plot remake/ui/menu-open-fit.png --luau --out remake/ui/menu-open-fit.json
+python "$SKILL_ROOT/scripts/ledger.py" import remake remake/ui/menu-open-fit.json --evidence EV-00N
 ```
 
 Use `--field scale` (with `motion_track --scale-search`) for pop-ins, `y_px` for slides, and the
@@ -239,10 +266,10 @@ the UI module with the `MS` ID.
 After every change in Phase 6 (one subsystem at a time):
 
 ```bash
-python scripts/visual_compare.py batch remake/shots.json --out remake/diff/it08
-python scripts/clip_compare.py remake/tracks/jump01.json remake/logs/run-08.log --targets remake/targets.json --clip jump01 \
+python "$SKILL_ROOT/scripts/visual_compare.py" batch remake/shots.json --out remake/diff/it08
+python "$SKILL_ROOT/scripts/clip_compare.py" remake/tracks/jump01.json remake/logs/run-08.log --targets remake/targets.json --clip jump01 \
   --out remake/diff/it08/clip-jump01.json --plot remake/diff/it08/clip-jump01.png
-python scripts/fidelity_report.py remake --diff-log --label "it8: FallGravityMultiplier 1.8 -> 2.0"
+python "$SKILL_ROOT/scripts/fidelity_report.py" remake --diff-log --label "it8: FallGravityMultiplier 1.8 -> 2.0"
 ```
 
 `fidelity_report` exits 1 on a regression and lists it in `remake/scorecard.md`; revert or fix the
@@ -255,10 +282,10 @@ Read `systems-analysis.md` first. Log every event in the range into `remake/syst
 (`frame,event,entity,...`), then:
 
 ```bash
-python scripts/event_stats.py remake/systems/wave1.csv --fps 60 --intervals spawn --by entity --out remake/systems/wave1.json
-python scripts/event_stats.py remake/systems/loot.csv --fps 60 --rate drop/kill --plan-halfwidth 0.05 --out remake/systems/loot.json
-python scripts/event_stats.py remake/systems/boss.csv --fps 60 --states idle,windup,attack,recover --by entity --out remake/systems/boss.json
-python scripts/ledger.py import remake remake/systems/loot.json --evidence EV-00N
+python "$SKILL_ROOT/scripts/event_stats.py" remake/systems/wave1.csv --fps 60 --intervals spawn --by entity --out remake/systems/wave1.json
+python "$SKILL_ROOT/scripts/event_stats.py" remake/systems/loot.csv --fps 60 --rate drop/kill --plan-halfwidth 0.05 --out remake/systems/loot.json
+python "$SKILL_ROOT/scripts/event_stats.py" remake/systems/boss.csv --fps 60 --states idle,windup,attack,recover --by entity --out remake/systems/boss.json
+python "$SKILL_ROOT/scripts/ledger.py" import remake remake/systems/loot.json --evidence EV-00N
 ```
 
 Write rates as intervals in the breakdown and tell the user how many more trials would narrow
@@ -268,9 +295,9 @@ them (`trials_needed`). Done when every `AI`/`SYS` timer, rate and state in the 
 ## 18. Match a sound effect with an original or licensed replacement
 
 ```bash
-python scripts/audio_onsets.py clip.mp4 --start 12 --end 14
-python scripts/audio_compare.py analyze clip.mp4 --start <onset - 0.05> --end <onset + 0.6> --out remake/audio/jump-ref.json --plot remake/audio/jump-ref.png
-python scripts/audio_compare.py compare clip.mp4 remake/audio/jump-new.wav --ref-start <onset - 0.05> --ref-end <onset + 0.6> --plot remake/audio/jump-cmp.png
+python "$SKILL_ROOT/scripts/audio_onsets.py" clip.mp4 --fps 60 --start 12 --end 14
+python "$SKILL_ROOT/scripts/audio_compare.py" analyze clip.mp4 --start <onset - 0.05> --end <onset + 0.6> --out remake/audio/jump-ref.json --plot remake/audio/jump-ref.png
+python "$SKILL_ROOT/scripts/audio_compare.py" compare clip.mp4 remake/audio/jump-new.wav --ref-start <onset - 0.05> --ref-end <onset + 0.6> --plot remake/audio/jump-cmp.png
 ```
 
 The replacement is your own or licensed sound (`rights-and-policy.md`); the tool tunes it, it does
@@ -285,19 +312,19 @@ Needs reference footage with an input overlay or a filmed controller; without on
 latency as `ASSUMED` and stop here.
 
 ```bash
-python scripts/extract_frames.py clip.mp4 --out remake/frames/inputs --mode range --start <a> --end <b>
+python "$SKILL_ROOT/scripts/extract_frames.py" clip.mp4 --out remake/frames/inputs --mode range --start <a> --end <b>
 # log each press frame (overlay lights up) and the first frame of the response into remake/systems/latency.csv
-python scripts/event_stats.py remake/systems/latency.csv --fps 60 --latency press/move --out remake/systems/latency.json
-python scripts/ledger.py import remake remake/systems/latency.json --evidence EV-00N
-python scripts/ledger.py targets remake --tier A
+python "$SKILL_ROOT/scripts/event_stats.py" remake/systems/latency.csv --fps 60 --latency press/move --out remake/systems/latency.json
+python "$SKILL_ROOT/scripts/ledger.py" import remake remake/systems/latency.json --evidence EV-00N
+python "$SKILL_ROOT/scripts/ledger.py" targets remake --tier A
 ```
 
 In Studio, set `Config.DevTools.MeasureLatency = true` (or the Workspace attribute
 `RemakeMeasureLatency`), press the same input 5 or more times, copy the Output, then:
 
 ```bash
-python scripts/studio_snippets.py extract-log console.txt --out remake/logs/latency-01.log
-python scripts/measure_compare.py remake/logs/latency-01.log --targets remake/targets.json --latency-key Space --allow-missing
+python "$SKILL_ROOT/scripts/studio_snippets.py" extract-log console.txt --out remake/logs/latency-01.log
+python "$SKILL_ROOT/scripts/measure_compare.py" remake/logs/latency-01.log --targets remake/targets.json --latency-key Space --allow-missing
 ```
 
 The harness counts rendered frames from the press to the first frame whose character position,

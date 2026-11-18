@@ -34,6 +34,10 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="show what would be created")
     args = ap.parse_args()
 
+    project = args.project.resolve()
+    skill = Path(__file__).resolve().parent.parent
+    if project == skill or skill in project.parents:
+        rc.fail("project root must be outside the installed skill; pass the user project path")
     if not args.project.is_dir():
         rc.fail(f"project directory not found: {args.project}")
     if not TEMPLATES.is_dir():

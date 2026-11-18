@@ -28,8 +28,9 @@ claim of "matches the original" points to a comparison artifact.
       "evidence": "EV-007",
       "reference": "remake/frames/ref/f001820_t30.333333.png",
       "recreation": "remake/captures/SHOT-03.png",
-      "camera": {"position": [12, 9, -30], "look_at": [0, 4, 0], "fov": 58.7},
+      "camera": {"position": [12, 9, -30], "look_at": [0, 4, 0], "projection": "perspective", "fov": 58.7, "fov_mode": "Vertical"},
       "clock_time": 14.5,
+      "gui_policy": "hide_developer",
       "crop": null,
       "mask": "remake/masks/SHOT-03-hud.png",
       "thresholds": {"ssim": 0.80, "delta_e_mean": 6.0, "edge_iou": 0.55},
@@ -38,6 +39,24 @@ claim of "matches the original" points to a comparison artifact.
   ]
 }
 ```
+
+### Shot capture fields (schema 1, backward-compatible optional fields)
+
+- `gui_policy`: `keep`, `hide_developer` (default), or `hide_all`. The sample SHOT-HUD
+  uses `hide_developer`: the target game's HUD and CoreGui stay as configured. Mark custom
+  developer ScreenGuis with `SetAttribute("RemakeDeveloperOverlay", true)`; the bundled
+  InputProbe is marked. `hide_all` also hides CoreGui. Release (F8), or switching shots,
+  restores the individual GUI flags that were changed, including originally disabled UI.
+  Legacy Luau `hideGui = true/false` remains supported as `hide_all/keep`.
+- `camera.projection`: `perspective` (default for older shots) or `orthographic`. For
+  perspective shots, supply the measured `camera.fov` in degrees and `camera.fov_mode`
+  (`Vertical` default, `Diagonal`, or `MaxAxis`). Orthographic shots require positive
+  `camera.orthographic_size` and may specify `camera.orthographic_axis` (`Vertical` default
+  or `Horizontal`). Example: `"projection": "orthographic", "orthographic_size": 40`.
+- ShotCamera reapplies projection, FOV mode, framing and focus after CameraRig, and restores
+  the saved camera instance's type, CFrame, Focus, FOV/mode and orthographic settings on
+  release. Capture remains external; these service-double tests do **not** establish Studio
+  rendering fidelity. Playtest perspective↔orthographic shots and mixed HUD/CoreGui states.
 
 - Establish camera numbers for each shot from the reference first: solve FOV, pitch and height
   with `camera_solve.py vanishing` (or `size`), place the camera from those numbers, then refine
@@ -180,3 +199,19 @@ scripts, and Developer Console memory. Record results against device budgets.
 A breakdown entry is **done** when its `accept:` test passes at the agreed tier with saved
 evidence, or when the user accepts a documented gap. The delivery report lists every entry with
 status: pass, gap (with the measured delta), limit, or not started.
+
+## Input-response timing limits
+
+`input_latency` uses each harness event's recorded elapsed `dt` (seconds), **not** `f * fd`:
+three rendered frames with last duration 0.1 s and elapsed 0.12 s are 0.12 s, not 0.30 s.
+`input_latency_frames` preserves `f` separately. Missing/nonfinite elapsed values do not
+produce a guessed seconds metric, though a valid frame count remains available.
+
+The harness waits for 150 ms of still, grounded character motion before a single probe.
+W/A/S/D require grounded displacement and velocity along the pressed key's camera-relative
+direction; Space/ButtonA require upward velocity in Jumping state. Unsupported inputs,
+overlapping probes and non-still baselines emit `latency_skipped` events, not measurements.
+No response within the configured timeout is `f = -1`. Use default camera-relative controls
+in a quiet test scene; action-consistent motion is **not proof of causality**, and custom
+bindings, external forces or missed states at low FPS need a dedicated probe. This is not
+end-to-end display/capture latency. Studio timing and baseline behavior still need playtests.

@@ -87,7 +87,7 @@ studs/s²). An unknown unit (`px`) prints no Roblox values.
 |---|---|---|
 | Coyote time | Walk off a ledge and press jump at increasing delays; the latest delay that still jumps | `Movement.CoyoteTime` (s) |
 | Jump buffer | Press jump just before landing at increasing leads; the earliest lead that still triggers a jump on landing | `Movement.JumpBuffer` (s) |
-| Air control | Change direction mid-air; measure lateral acceleration in the air compared with on the ground | `Movement.AirControl` (0–1 multiplier on the ramp rate) |
+| Air control | Change direction mid-air; measure lateral acceleration in the air compared with on the ground | `Movement.AirControl` (0–1 multiplier; zero freezes air steering; instant airborne ramps use a finite 0.1 s reference ramp) |
 | Double jump and air jumps | Count and measure the second apex | `Movement.AirJumps`, `Movement.AirJumpApex` |
 
 These need an on-screen input display in the footage. Without one, mark them `ASSUMED` and ask

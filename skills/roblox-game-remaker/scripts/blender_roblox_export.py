@@ -27,6 +27,7 @@ The pure-Python checks below (no bpy) are unit tested outside Blender.
 from __future__ import annotations
 
 import argparse
+import math
 import json
 import sys
 
@@ -119,10 +120,54 @@ def parse_args(argv: list[str]):
     ap.add_argument("--format", choices=["fbx", "glb", "gltf"])
     ap.add_argument("--selected", action="store_true")
     ap.add_argument("--animation", action="store_true")
+    ap.add_argument("--action", help="FBX animation action name (otherwise the sole armature's active action)")
+    ap.add_argument("--frame-start", type=int)
+    ap.add_argument("--frame-end", type=int)
     ap.add_argument("--r15", action="store_true")
     ap.add_argument("--report")
     ap.add_argument("--force", action="store_true")
-    return ap.parse_args(argv)
+    args = ap.parse_args(argv)
+    if (args.action is not None or args.frame_start is not None or args.frame_end is not None) and not args.animation:
+        ap.error("--action and frame range require --animation")
+    if (args.frame_start is None) != (args.frame_end is None):
+        ap.error("provide both --frame-start and --frame-end")
+    if args.frame_start is not None and args.frame_end < args.frame_start:
+        ap.error("--frame-end must be >= --frame-start")
+    fmt = args.format or args.out.rsplit(".", 1)[-1].lower()
+    if fmt != "fbx" and (args.action is not None or args.frame_start is not None):
+        ap.error("explicit single-clip action/range selection currently supports FBX only")
+    return args
+
+
+def fbx_animation_options(args) -> dict:
+    """Single-clip contract; options tested offline, actual FBX export Prepared, not run."""
+    return {"bake_anim": args.animation, "bake_anim_use_all_actions": False, "bake_anim_use_nla_strips": False}
+
+
+def prepare_animation(bpy, args, arms) -> dict:
+    """Select a single rig/action and an explicit scene range; never guess a compatible action."""
+    if len(arms) != 1:
+        raise ValueError("single-clip FBX animation requires exactly one exported armature")
+    arm = arms[0]
+    if args.action:
+        action = bpy.data.actions.get(args.action)
+        if action is None:
+            raise ValueError(f"action {args.action!r} not found")
+        arm.animation_data_create()
+        arm.animation_data.action = action
+    else:
+        action = arm.animation_data.action if arm.animation_data else None
+        if action is None:
+            raise ValueError("armature has no active action; pass --action NAME")
+    # NLA strips must not blend into the selected action's evaluated pose.
+    arm.animation_data.use_nla = False
+    start, end = args.frame_start, args.frame_end
+    if start is None:
+        start, end = math.floor(action.frame_range[0]), math.ceil(action.frame_range[1])
+    bpy.context.scene.frame_start = start
+    bpy.context.scene.frame_end = end
+    return {"action": action.name, "frame_start": start, "frame_end": end}
+
 
 
 # ----------------------------------------------------------------- Blender side
@@ -142,6 +187,12 @@ def _blender_main(argv: list[str]) -> int:
     errors: list[str] = []
     warnings: list[str] = []
     stats = {"meshes": {}, "armatures": {}}
+    if args.animation and fmt == "fbx":
+        try:
+            stats["animation"] = prepare_animation(bpy, args, arms)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
     depsgraph = bpy.context.evaluated_depsgraph_get()
 
     for ob in meshes:
@@ -203,7 +254,7 @@ def _blender_main(argv: list[str]) -> int:
             bpy.ops.export_scene.fbx(
                 filepath=args.out, use_selection=True, path_mode="COPY", embed_textures=True,
                 apply_scale_options="FBX_SCALE_UNITS", axis_forward="Z", axis_up="Y",
-                add_leaf_bones=False, bake_anim=args.animation, object_types={"MESH", "ARMATURE"},
+                add_leaf_bones=False, object_types={"MESH", "ARMATURE"}, **fbx_animation_options(args),
             )
         else:
             bpy.ops.export_scene.gltf(filepath=args.out, use_selection=True,

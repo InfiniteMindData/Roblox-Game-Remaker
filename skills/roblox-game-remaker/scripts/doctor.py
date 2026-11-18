@@ -90,7 +90,7 @@ def main() -> int:
     }
     advice = []
     if not py_ok:
-        advice.append("Install Python packages: pip install -r scripts/requirements.txt (Python 3.10+).")
+        advice.append(f'Install Python packages: "{sys.executable}" -m pip install -r "{Path(__file__).resolve().parent / "requirements.txt"}" (Python 3.10+).')
     if not video_ok:
         advice.append("Install ffmpeg (provides ffmpeg and ffprobe) for the video scripts.")
     if not runs("rojo"):

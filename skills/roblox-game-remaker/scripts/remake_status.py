@@ -3,7 +3,8 @@
 
 Reads the remake/ workspace (intake, ledgers, breakdown, targets, shots, Config.luau, logs,
 comparison reports, diff log, delivery report) and evaluates each phase gate from SKILL.md.
-Run it at the start of every session and after each phase. With --write it also saves
+Run it at the start of every session and after each phase; --init initializes a fresh project.
+Accepted gaps route provisionally, never as measured verification; --mode measured ignores them. With --write it also saves
 remake/STATUS.md, a compact handoff that survives context resets.
 
 Examples:
@@ -25,6 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import breakdown_check  # noqa: E402
+import ledger  # noqa: E402
 import remake_common as rc  # noqa: E402
 
 TOOL = "remake_status"
@@ -51,7 +53,7 @@ def gate(ok: bool, detail: str, action: str, partial: bool = False) -> dict:
     return {"ok": ok, "partial": partial and not ok, "detail": detail, "action": action}
 
 
-def evaluate(remake: Path, config: Path | None) -> dict:
+def evaluate(remake: Path, config: Path | None, mode: str = "provisional") -> dict:
     intake = read(remake / "00-intake.md")
     ev = load_json(remake / "evidence.json", {}).get("evidence", [])
     ms = load_json(remake / "measurements.json", {}).get("measurements", [])
@@ -154,11 +156,35 @@ def evaluate(remake: Path, config: Path | None) -> dict:
              "5 Build (Config)", "6 Verify and fix", "7 Deliver"]
     for n, g in zip(names, gates):
         g["phase"] = n
-    current = next((i for i, g in enumerate(gates) if not g["ok"]), len(gates))
+    acceptances = ledger.accepted_gaps(remake, cfg) if mode == "provisional" else []
+    scopes = {a["scope"] for a in acceptances}
+    # Scope acceptance changes routing, never the measured gate result (ok).
+    phase_scopes = {1: "research", 2: "analysis", 4: "translation", 5: "build"}
+    accepted_assumptions = bool(summ.get("assumptions")) and all(a["id"] in scopes for a in summ["assumptions"])
+    for i, g in enumerate(gates):
+        provisional = not g["ok"] and phase_scopes.get(i) in scopes
+        if i == 3 and not g["ok"] and bd_path.is_file():
+            # An entry acceptance waives only its ASSUMED warning, not missing fields or bad evidence.
+            provisional = (not res["errors"] and accepted_assumptions and all(
+                any(w["message"] == f"{a['id']}: ASSUMED value in the breakdown" and a["id"] in scopes
+                    for a in summ["assumptions"]) for w in res["warnings"]))
+        if i == 3 and not g["ok"] and summ.get("assumptions") and bd_path.is_file() and not res["errors"]:
+            g["action"] = ("Replace assumptions with evidence, or ask for consent to the bounded slice and record each "
+                           "accepted entry with ledger.py accept-gap; do not relabel assumptions as measured.")
+        if i == 5 and provisional and cfg_json and cfg_json.get("error_count"):
+            provisional = False  # consent does not repair invalid Config evidence
+        g["state"] = "verified" if g["ok"] else ("provisional" if provisional else "blocked")
+        if g["ok"] and ((i == 3 and any(summ.get("by_status", {}).get(k) for k in ("UNKNOWN", "INFERRED", "ASSUMED")))
+                        or (i == 5 and (cfg_json or {}).get("summary", {}).get("assumptions"))):
+            g["state"] = "provisional"
+    current = next((i for i, g in enumerate(gates) if g["state"] == "blocked"
+                    or (mode == "measured" and g["state"] != "verified")), len(gates))
+    provisional = any(g["state"] == "provisional" for g in gates) or bool(summ.get("assumptions"))
+    state = "blocked" if current < len(gates) else ("provisional" if provisional else "verified")
     return {
         "tool": TOOL, "remake": str(remake), "generated": _dt.datetime.now().isoformat(timespec="seconds"),
-        "gates": gates, "current_phase": current,
-        "next_action": gates[current]["action"] if current < len(gates) else "All gates pass: review gaps with the user.",
+        "gates": gates, "current_phase": current, "state": state, "mode": mode, "acceptances": acceptances,
+        "next_action": gates[current]["action"] if current < len(gates) else ("Provisional slice complete: gaps remain unverified." if provisional else "All gates satisfied: review measured results with the user."),
         "open_questions": summ.get("open_questions", []), "assumptions": summ.get("assumptions", []),
         "config_assumptions": (cfg_json or {}).get("summary", {}).get("assumptions", []),
         "inaccessible_sources": [f"{e.get('id')} {e.get('title', '')}" for e in blocked],
@@ -180,7 +206,7 @@ def render(st: dict) -> str:
     lines.append("| Phase | Gate | Detail |")
     lines.append("|---|---|---|")
     for g in st["gates"]:
-        mark = "pass" if g["ok"] else ("partial" if g["partial"] else "open")
+        mark = g["state"]
         lines.append(f"| {g['phase']} | {mark} | {g['detail']} |")
     lines += ["", f"**Current phase:** {st['gates'][st['current_phase']]['phase'] if st['current_phase'] < len(st['gates']) else 'done'}",
               f"**Next action:** {st['next_action']}", ""]
@@ -192,6 +218,10 @@ def render(st: dict) -> str:
                      "Details: `remake/scorecard.md`; history: `remake/history.jsonl`.")
         lines += [f"- REGRESSION: {r}" for r in sc["regressions"]]
         lines += [f"- failing: {f}" for f in sc["failing"]]
+        lines.append("")
+    if st.get("acceptances"):
+        lines += ["## Accepted gaps (provisional, not measured)"]
+        lines += [f"- {a['scope']}: {a['by']} on {a['when']}: {a['reason']}" for a in st["acceptances"]]
         lines.append("")
     if st["open_questions"]:
         lines.append("## Open questions")
@@ -212,15 +242,28 @@ def render(st: dict) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("remake", type=Path)
+    ap.add_argument("--init", action="store_true", help="initialize a missing remake/ before status")
+    ap.add_argument("--game", default="TBD", help="reference name for --init")
     ap.add_argument("--config", type=Path, help="Config.luau (default: found under the project)")
     ap.add_argument("--write", action="store_true", help="also write remake/STATUS.md")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--require-phase", type=int, help="exit 1 unless every gate before this phase passes")
+    ap.add_argument("--mode", choices=("measured", "provisional"), default="provisional", help="measured ignores gap acceptances; provisional permits scoped consent")
+    ap.add_argument("--require-phase", type=int, help="exit 1 unless earlier gates are satisfied (or accepted in provisional mode)")
     args = ap.parse_args()
+    if args.init:
+        if args.remake.name != "remake":
+            rc.fail("--init requires PROJECT_ROOT/remake")
+        if args.remake.exists() and not args.remake.is_dir():
+            rc.fail(f"not a directory: {args.remake}")
+        proc = subprocess.run([sys.executable, str(HERE / "breakdown_init.py"), str(args.remake.parent),
+                               "--game", args.game], capture_output=True, text=True)
+        if proc.returncode:
+            print(proc.stderr, file=sys.stderr)
+            return proc.returncode
     if not args.remake.is_dir():
         print(f"error: remake directory not found: {args.remake} (run breakdown_init.py first)", file=sys.stderr)
         return rc.EXIT_USAGE
-    st = evaluate(args.remake, args.config)
+    st = evaluate(args.remake, args.config, args.mode)
     text = render(st)
     if args.write:
         (args.remake / "STATUS.md").write_text(text + "\n", encoding="utf-8")

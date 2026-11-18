@@ -85,7 +85,7 @@ and writes a JSON report.
 blender -b asset.blend --python scripts/blender_roblox_export.py -- \
   --out exports/crate.fbx --report exports/crate.report.json
 blender -b hero.blend --python scripts/blender_roblox_export.py -- \
-  --out exports/hero_run.fbx --animation --r15 --report exports/hero_run.report.json
+  --out exports/hero_run.fbx --animation --action Run --frame-start 1 --frame-end 30 --r15 --report exports/hero_run.report.json
 blender -b prop.blend --python scripts/blender_roblox_export.py -- --out exports/prop.glb --format glb
 ```
 
@@ -93,6 +93,16 @@ Checks: triangle count per mesh, n-gons, non-manifold edges, zero-area faces, un
 transforms, influence count per vertex, root-bone influences, bone rest rotation and scale,
 R15 bone names and hierarchy (`--r15`), and cage naming. The script exits with status 1 on
 errors without exporting, unless you pass `--force`.
+
+FBX animation export is single-clip: exactly one exported armature, a named `--action`
+(or its active action), and either both `--frame-start`/`--frame-end` or the action's own
+rounded-out range. It disables NLA evaluation, NLA-strip export and all-actions export.
+Missing actions/rigs and invalid ranges stop with status 2 even with `--force`. Explicit
+action/range selection currently supports FBX only; glTF animation export is unchanged.
+**Prepared, not run:** option selection and scene/action assignment are tested with doubles,
+not Blender. Verify a two-action rig's FBX contains only the selected AnimStack and frames,
+then import into Studio to check pose, timing, action compatibility and scale. Blender and
+Studio were unavailable for this change; do not treat offline tests as export verification.
 
 ## 8. Roblox Blender plugin
 
