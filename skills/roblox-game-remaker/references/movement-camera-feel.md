@@ -64,6 +64,11 @@ For apex height *h*, rise time *t_r* and fall time *t_f*:
 python scripts/remake_calc.py jump --apex 7.4 --rise-time 0.383 --fall-time 0.300 --min-apex 3.0 --release-time 0.05 --luau
 ```
 
+Heights in metres or feet (from a real-world or a game's own scale): pass `--unit meters` (or
+`cm`, `feet`) and `--studs-per-meter` if the world scale is not the official 1 stud = 0.28 m. The
+Roblox lines and the Luau are then in studs (1.4 m with a 0.4 s rise is 5 studs and 62.5
+studs/s²). An unknown unit (`px`) prints no Roblox values.
+
 ### Implement
 
 - Set `Workspace.Gravity = g_r` (server, from `Config.World.Gravity`), `UseJumpPower = false` and
@@ -82,7 +87,7 @@ python scripts/remake_calc.py jump --apex 7.4 --rise-time 0.383 --fall-time 0.30
 |---|---|---|
 | Coyote time | Walk off a ledge and press jump at increasing delays; the latest delay that still jumps | `Movement.CoyoteTime` (s) |
 | Jump buffer | Press jump just before landing at increasing leads; the earliest lead that still triggers a jump on landing | `Movement.JumpBuffer` (s) |
-| Air control | Change direction mid-air; measure lateral acceleration in the air compared with on the ground | `Movement.AirControl` (0–1 multiplier on the ramp rate) |
+| Air control | Change direction mid-air; measure lateral acceleration in the air compared with on the ground | `Movement.AirControl` (0–1 multiplier; zero freezes air steering; instant airborne ramps use a finite 0.1 s reference ramp) |
 | Double jump and air jumps | Count and measure the second apex | `Movement.AirJumps`, `Movement.AirJumpApex` |
 
 These need an on-screen input display in the footage. Without one, mark them `ASSUMED` and ask
@@ -103,6 +108,10 @@ the user to record a test.
 python scripts/fit_curve.py --track remake/tracks/cam-stop.json --field x_px --window 0.9,2.0 --luau --plot remake/sheets/cam-stop-fit.png
 # rank 1 Spring: omega, zeta -> Config.Camera FollowFrequency / FollowDamping (with uncertainties)
 ```
+
+  Read `model_confirmed` before you copy a number: when the residuals run in long same-sign
+  stretches no candidate matches (keyframes, a smoothstep, tracking drift), and the ± is widened
+  and marked as a lower bound.
 
   If only the overshoot and settle time are known (no track), `remake_calc.py spring --overshoot 0
   --settle-time 0.35` converts them instead.
@@ -143,4 +152,9 @@ unless the original was itself a VR game and the user accepts the comfort trade-
 2. Reproduce the reference test: a standing start, one jump, a tap jump, a stop.
 3. Copy the Output (or use MCP `get_console_output`) to `remake/logs/run-01.log`.
 4. Run `python scripts/measure_compare.py remake/logs/run-01.log --targets remake/targets.json`.
+   Hold the movement input until the speed has been flat for at least 0.5 s: a run cut short
+   while still speeding up reports no `ground_speed` or `accel_t90` (with a warning) instead of a
+   mid-ramp number. Every jump or start is judged on its own (`within` counts them), so an
+   inconsistent build cannot average into a pass; a targeted metric the log never produced is
+   reported missing.
 5. Adjust `Config`, re-run, and log each iteration in `remake/diff-log.md`.

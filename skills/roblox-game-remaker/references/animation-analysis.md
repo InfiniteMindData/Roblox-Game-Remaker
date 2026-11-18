@@ -100,6 +100,12 @@ Pick the path by fidelity need and available tools:
    character is not a valid input. Use it for reference acting the user records, then clean the
    result against the reference frames.
 
+4. **Studio MCP `generate_animation`.** Generate an R15 placeholder from a text prompt, or
+   convert an existing R6 animation asset to R15 (specific rig and up to 10 seconds supported).
+   Generation is not motion measurement: refine keyposes, cadence, foot contacts, root travel
+   and marker timing against the reference before assigning measured fidelity. Use only assets
+   you own or can license. Availability: [Studio MCP docs](https://create.roblox.com/docs/studio/mcp).
+
 ### Naming and markers
 
 - Name events with `KeyframeMarker`s (for example `FootL`, `FootR`, `Hit`, `VFX_Spawn`) and listen

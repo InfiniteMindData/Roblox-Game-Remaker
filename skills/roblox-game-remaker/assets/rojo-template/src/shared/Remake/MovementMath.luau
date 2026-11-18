@@ -36,6 +36,29 @@ function MovementMath.rampRate(topSpeed: number, rampTime: number): number
 	return topSpeed / rampTime
 end
 
+-- Maximum steering change this step. Instant ground ramps stay instant; airborne
+-- instant ramps use a finite 0.1 s reference ramp so AirControl remains meaningful.
+function MovementMath.steeringDelta(
+	topSpeed: number,
+	rampTime: number,
+	dt: number,
+	airborne: boolean,
+	airControl: number
+): number
+	if dt <= 0 or topSpeed <= 0 then
+		return 0
+	end
+	if airborne then
+		local control = math.clamp(airControl, 0, 1)
+		if control == 0 then
+			return 0
+		end
+		local duration = if rampTime > 0 then rampTime else 0.1
+		return topSpeed / duration * control * dt
+	end
+	return MovementMath.rampRate(topSpeed, rampTime) * dt
+end
+
 function MovementMath.expApproach(current: number, target: number, tau: number, dt: number): number
 	if tau <= 0 then
 		return target

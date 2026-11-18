@@ -28,8 +28,9 @@ claim of "matches the original" points to a comparison artifact.
       "evidence": "EV-007",
       "reference": "remake/frames/ref/f001820_t30.333333.png",
       "recreation": "remake/captures/SHOT-03.png",
-      "camera": {"position": [12, 9, -30], "look_at": [0, 4, 0], "fov": 58.7},
+      "camera": {"position": [12, 9, -30], "look_at": [0, 4, 0], "projection": "perspective", "fov": 58.7, "fov_mode": "Vertical"},
       "clock_time": 14.5,
+      "gui_policy": "hide_developer",
       "crop": null,
       "mask": "remake/masks/SHOT-03-hud.png",
       "thresholds": {"ssim": 0.80, "delta_e_mean": 6.0, "edge_iou": 0.55},
@@ -39,21 +40,46 @@ claim of "matches the original" points to a comparison artifact.
 }
 ```
 
+### Shot capture fields (schema 1, backward-compatible optional fields)
+
+- `gui_policy`: `keep`, `hide_developer` (default), or `hide_all`. The sample SHOT-HUD
+  uses `hide_developer`: the target game's HUD and CoreGui stay as configured. Mark custom
+  developer ScreenGuis with `SetAttribute("RemakeDeveloperOverlay", true)`; the bundled
+  InputProbe is marked. `hide_all` also hides CoreGui. Release (F8), or switching shots,
+  restores the individual GUI flags that were changed, including originally disabled UI.
+  Legacy Luau `hideGui = true/false` remains supported as `hide_all/keep`.
+- `camera.projection`: `perspective` (default for older shots) or `orthographic`. For
+  perspective shots, supply the measured `camera.fov` in degrees and `camera.fov_mode`
+  (`Vertical` default, `Diagonal`, or `MaxAxis`). Orthographic shots require positive
+  `camera.orthographic_size` and may specify `camera.orthographic_axis` (`Vertical` default
+  or `Horizontal`). Example: `"projection": "orthographic", "orthographic_size": 40`.
+- ShotCamera reapplies projection, FOV mode, framing and focus after CameraRig, and restores
+  the saved camera instance's type, CFrame, Focus, FOV/mode and orthographic settings on
+  release. Capture remains external; these service-double tests do **not** establish Studio
+  rendering fidelity. Playtest perspective↔orthographic shots and mixed HUD/CoreGui states.
+
 - Establish camera numbers for each shot from the reference first: solve FOV, pitch and height
   with `camera_solve.py vanishing` (or `size`), place the camera from those numbers, then refine
   position and look-at until landmarks align (`visual_compare` edge IoU rises as alignment
   improves). Record the solved values and their uncertainty in the shot's evidence; nudging
   inside that uncertainty is fine, beyond it means a marked line was wrong.
 - `mask` is a black-and-white PNG where white marks pixels to **ignore** (HUD, particles, other
-  players).
+  players). Masked pixels change no metric: SSIM windows next to the mask use only unmasked pixels.
+- Thresholds in `shots.json` (`"thresholds": {"ssim": 0.9, "delta_e_mean": 3, "edge_iou": 0.6,
+  "local_ssim": 0.8}`) or `--fail-under-*` flags. A threshold whose metric was not computed (an
+  SSIM threshold with `--edges-only`) fails: it was asked for and not measured.
 - Batch run: `python scripts/visual_compare.py batch remake/shots.json --out remake/diff/` writes
-  a report per shot plus `summary.json`, and exits with status 1 if any shot fails its
-  thresholds.
+  a report per shot plus `summary.json` (each shot's thresholds stored with its result), and exits
+  with status 1 if any shot fails its thresholds.
 
 ## 3. Reading `visual_compare` reports
 
 - `ssim` (0–1): structural similarity of luminance. It falls sharply with misalignment, so fix
   the camera first.
+- `local_ssim` and `local_ssim_box`: the worst SSIM over any small window (`--local-window`, 32
+  reference px). A 32×32 HUD icon that changed completely leaves the global SSIM at 0.9995 but its
+  window near 0.55. Gate it with `--fail-under-local-ssim` (shots.json `local_ssim`); without a
+  gate, the report notes a strongly different small region.
 - `delta_e_mean` and `delta_e_p95` (CIEDE2000): perceptual color difference. Under about 2 is
   barely visible; over 10 is a clearly different color.
 - `lab_shift`: average `dL` (lightness), `da` (green to red), `db` (blue to yellow) of the
@@ -83,13 +109,17 @@ python scripts/clip_compare.py remake/tracks/jump01.json remake/logs/run-04.log 
 - Inputs: a `motion_track` or `camera_solve ground` track, a harness log, or a frame manifest
   with `--ref-bbox`/`--rec-bbox`. Both sides must be in the same unit.
 - Each clip is reduced to `along` (distance along its own net direction, so camera orientation
-  and world axes do not matter) and `up`. Axes on which neither clip moves are dropped.
+  and world axes do not matter), `lateral` (sideways distance from that line; ground tracks and
+  harness logs only) and `up`. Axes on which neither clip moves are dropped, except `lateral`,
+  which is always judged when both clips have it: a straight run and one with a 10-stud detour
+  have the same along-path distance. A side-on `motion_track` has no lateral axis (warned).
 - Alignment: `first-motion` (default; the start of movement, back-extrapolated to zero
   displacement) or `--align frames --ref-frame N --rec-frame M` for an event you can see, such as
   the frame the jump button lights up.
 - Read `position_rms`/`position_max` against `floor`: errors below the frame-quantization floor
   are as small as the footage can show. `bias` says which way the recreation is off; the event
-  offsets (`speed_90`, `apex`, `landing`, `stop`) say when.
+  offsets (`speed_90`, `apex`, `landing`, `stop`) say when. With an event tolerance, an event that
+  only one clip shows (the reference jumps, the build does not) fails.
 - Tolerances: `targets.json` → `clips.default` (written by `ledger.py targets` from the tier as a
   percent of the reference's travel and a number of frames), overridden per clip with `--clip ID`.
   The command exits 1 when one is exceeded.
@@ -110,7 +140,11 @@ and reads every `clip_compare` result, then:
 - appends one JSON line to `remake/history.jsonl`, writes `remake/scorecard.md`, and with
   `--diff-log` appends the iteration block below with the before and after numbers filled in;
 - exits 1 on a regression: something that passed before and fails now, or a failure that got
-  worse by more than `--margin`. Undo or fix the change before moving on.
+  worse by more than `--margin`. Undo or fix the change before moving on. With `--fail-on-fail` it
+  also exits 1 when anything fails or is missing.
+- never upgrades a result: a shot or clip its own tool failed stays failed, a targeted metric the
+  log never produced is `missing`, and clips are keyed by `--clip ID` or the reference's full path
+  (two references both named `manifest.json` stay separate).
 
 Give `clip_compare` a stable `--clip ID` per clip so the scorecard follows it across iterations.
 `remake_status.py` shows the latest scorecard and holds Phase 6 while a regression stands.
@@ -165,3 +199,19 @@ scripts, and Developer Console memory. Record results against device budgets.
 A breakdown entry is **done** when its `accept:` test passes at the agreed tier with saved
 evidence, or when the user accepts a documented gap. The delivery report lists every entry with
 status: pass, gap (with the measured delta), limit, or not started.
+
+## Input-response timing limits
+
+`input_latency` uses each harness event's recorded elapsed `dt` (seconds), **not** `f * fd`:
+three rendered frames with last duration 0.1 s and elapsed 0.12 s are 0.12 s, not 0.30 s.
+`input_latency_frames` preserves `f` separately. Missing/nonfinite elapsed values do not
+produce a guessed seconds metric, though a valid frame count remains available.
+
+The harness waits for 150 ms of still, grounded character motion before a single probe.
+W/A/S/D require grounded displacement and velocity along the pressed key's camera-relative
+direction; Space/ButtonA require upward velocity in Jumping state. Unsupported inputs,
+overlapping probes and non-still baselines emit `latency_skipped` events, not measurements.
+No response within the configured timeout is `f = -1`. Use default camera-relative controls
+in a quiet test scene; action-consistent motion is **not proof of causality**, and custom
+bindings, external forces or missed states at low FPS need a dedicated probe. This is not
+end-to-end display/capture latency. Studio timing and baseline behavior still need playtests.

@@ -2,14 +2,19 @@
 """Estimate camera field of view, pitch and height from marked footage, and convert ground-plane
 pixels to world units.
 
-Pinhole model with square pixels and the principal point at the image center (override with
---principal). Pixel coordinates are in the full source frame: x right, y down. Pitch is the
+Pinhole model with square pixels and the principal point at the center of the game picture
+(override with --principal). Pixel coordinates are in the full source frame: x right, y down.
+Letterboxed or pillarboxed footage (a 1920x800 game picture inside a 1920x1080 capture): pass
+--viewport x,y,w,h, the game picture inside the frame. FOV is then measured over the viewport
+(what Camera.FieldOfView means) and the principal point defaults to its center; coordinates stay
+in full-frame pixels. Without it the FOV is that of the whole frame, wrong for the game. Pitch is the
 camera's look elevation (negative = looking down, as in Config.Camera.StartPitchDeg). Roblox
 Camera.FieldOfView is vertical, so every mode reports vfov_deg first.
 
 Subcommands:
   vanishing  two or three sets of world-parallel lines (two orthogonal ground directions, and
-             optionally vertical edges) -> focal length, vertical and horizontal FOV, pitch,
+             optionally vertical edges; with three sets, a set whose lines stay parallel in the
+             image adds no focal constraint and is skipped) -> focal length, vertical and horizontal FOV, pitch,
              roll; plus camera height with --known-height (a vertical object of known height
              standing on the ground) or --known-ground (two ground points a known distance apart)
   size       an object of known size at a known depth spanning a marked pixel segment -> FOV
@@ -23,7 +28,8 @@ axis, then the far corner, then along the depth axis.
 
 Uncertainty: every marked coordinate is moved by -1 and +1 px in turn and the result recomputed;
 the reported uncertainty combines those sensitivities in quadrature, and worst_case adds them.
-When a 1 px move makes the solution impossible, the value is reported as unstable.
+When a 1 px move makes the solution impossible, the value is reported as unstable. Ground mode
+reports the same for the camera it derives from the rectangle (camera_from_rect.uncertainty).
 
 Examples:
   python camera_solve.py vanishing --image 1920x1080 --lines-x "100,900,800,700;120,1000,900,760" \\
@@ -76,6 +82,31 @@ def parse_points(text: str, name: str, per: int) -> list[list[float]]:
     if not out:
         rc.fail(f"{name} is empty")
     return out
+
+
+def frame_geometry(args) -> tuple[int, int, list[float], list[float] | None]:
+    """(FOV width, FOV height, principal point, viewport) in full-frame pixels.
+
+    The FOV spans the game picture: the viewport when given (letterbox, pillarbox), otherwise the
+    whole frame. The principal point defaults to the picture's center."""
+    w, h = parse_image(args.image)
+    vp = None
+    if getattr(args, "viewport", None):
+        vp = rc.parse_float_list(args.viewport, "--viewport")
+        if len(vp) != 4 or vp[2] <= 0 or vp[3] <= 0:
+            rc.fail("--viewport is x,y,w,h: the game picture inside the frame (for example 0,140,1920,800)")
+        if vp[0] < 0 or vp[1] < 0 or vp[0] + vp[2] > w + 0.5 or vp[1] + vp[3] > h + 0.5:
+            rc.fail(f"--viewport {args.viewport} lies outside the {w}x{h} frame")
+    if args.principal:
+        c = rc.parse_float_list(args.principal, "--principal")
+        if len(c) != 2:
+            rc.fail("--principal must be cx,cy")
+    elif vp:
+        c = [vp[0] + vp[2] / 2, vp[1] + vp[3] / 2]
+    else:
+        c = [w / 2, h / 2]
+    fw, fh = (vp[2], vp[3]) if vp else (w, h)
+    return fw, fh, c, vp
 
 
 # ----------------------------------------------------------------- geometry
@@ -202,11 +233,17 @@ def measurement(metric, what, value, unc, unit, method):
 
 # ----------------------------------------------------------------- vanishing mode
 
+def far_vp(v, c, w, h) -> bool:
+    """A vanishing point so far out (or at infinity) that its pair gives no usable focal length."""
+    d = math.hypot(v[0] - c[0] * v[2], v[1] - c[1] * v[2])
+    return abs(v[2]) * FAR_VP * max(w, h) < d
+
+
+FAR_VP = 10.0  # vanishing points beyond 10 frame sizes from the principal point carry ~no focal information
+
+
 def cmd_vanishing(args) -> dict:
-    w, h = parse_image(args.image)
-    c = rc.parse_float_list(args.principal, "--principal") if args.principal else [w / 2, h / 2]
-    if len(c) != 2:
-        rc.fail("--principal must be cx,cy")
+    w, h, c, vp = frame_geometry(args)
     sets = {"x": args.lines_x, "z": args.lines_z, "y": args.lines_y}
     given = {k: parse_points(v, f"--lines-{k}", 4) for k, v in sets.items() if v}
     for k, lines in given.items():
@@ -239,6 +276,12 @@ def cmd_vanishing(args) -> dict:
             pos += n
             vps[k] = vanishing_point([chunk[i:i + 4] for i in range(0, n, 4)])
         pairs = [(a, b) for a, b in (("x", "z"), ("x", "y"), ("z", "y")) if a in vps and b in vps]
+        if len(pairs) > 1:
+            # With three sets, a set parallel in the image (its vanishing point at or near infinity,
+            # an axis facing the camera squarely) constrains nothing: skip its pairs if others remain.
+            usable = [(a, b) for a, b in pairs if not (far_vp(vps[a], c, w, h) or far_vp(vps[b], c, w, h))]
+            if usable:
+                pairs = usable
         focals = [focal_from_pair(vps[a], vps[b], c) for a, b in pairs]
         f = sum(focals) / len(focals)
         dirs = {k: camera_dir(v, f, c) for k, v in vps.items()}
@@ -250,7 +293,8 @@ def cmd_vanishing(args) -> dict:
         out = {"focal_px": f, "vfov_deg": vf, "hfov_deg": hf,
                "pitch_deg": math.degrees(math.asin(max(-1.0, min(1.0, float(u[2]))))),
                "roll_deg": math.degrees(math.atan2(float(u[0]), float(-u[1]))),
-               "focal_spread_px": (max(focals) - min(focals)) if len(focals) > 1 else 0.0}
+               "focal_spread_px": (max(focals) - min(focals)) if len(focals) > 1 else 0.0,
+               "_pairs": ["-".join(p) for p in pairs]}
         if known:
             k = coords[pos:pos + 4]
             if known[0] == "height":
@@ -267,9 +311,16 @@ def cmd_vanishing(args) -> dict:
     keys = ["focal_px", "vfov_deg", "hfov_deg", "pitch_deg", "roll_deg"] + (["height", "distance_to_base"] if known else [])
     unc, worst, unstable = sensitivity(solve, flat, keys)
     vps = base.pop("_vps")
+    used_pairs = base.pop("_pairs")
     method = (f"camera_solve vanishing: line sets {', '.join(order)} ({', '.join(str(len(given[k])) for k in order)} lines), "
-              f"principal point {c[0]:g},{c[1]:g}, image {w}x{h}; uncertainty = +/-1 px per marked coordinate in quadrature")
+              f"principal point {c[0]:g},{c[1]:g}, {'viewport' if vp else 'image'} {w:g}x{h:g}; "
+              "uncertainty = +/-1 px per marked coordinate in quadrature")
     warnings = []
+    all_pairs = [f"{a}-{b}" for a, b in (("x", "z"), ("x", "y"), ("z", "y")) if a in given and b in given]
+    skipped = [p for p in all_pairs if p not in used_pairs]
+    if skipped:
+        warnings.append(f"line-set pairs {', '.join(skipped)} were skipped: a vanishing point there is at or near infinity "
+                        f"(the lines stay parallel in the image), so it gives no focal length; solved from {', '.join(used_pairs)}")
     if base["focal_spread_px"] > 0.05 * base["focal_px"]:
         warnings.append(f"the three line sets disagree on focal length by {base['focal_spread_px']:.0f} px "
                         f"({100 * base['focal_spread_px'] / base['focal_px']:.0f}%): a set is not parallel, or the principal point is off-center")
@@ -291,14 +342,14 @@ def cmd_vanishing(args) -> dict:
         how = "vertical object" if known[0] == "height" else "ground distance"
         ms.append(measurement("camera_height", f"camera height above the ground (from a known {how} of {known[2]:g} {unit})",
                               base["height"], res["uncertainty"]["height"], unit, method))
-    return {"mode": "vanishing", "image": [w, h], "principal_point": c, "unit": unit, "result": res,
-            "measurements": ms, "warnings": warnings}
+    return {"mode": "vanishing", "image": list(parse_image(args.image)), "viewport": vp, "principal_point": c, "unit": unit,
+            "result": res, "focal_pairs": used_pairs, "measurements": ms, "warnings": warnings}
 
 
 # ----------------------------------------------------------------- size mode
 
 def cmd_size(args) -> dict:
-    w, h = parse_image(args.image)
+    w, h, _, vp = frame_geometry(args)
     span = rc.parse_float_list(args.span, "--span")
     if len(span) != 4:
         rc.fail("--span is x1,y1,x2,y2 (the two ends of the object in the frame)")
@@ -340,7 +391,8 @@ def cmd_size(args) -> dict:
     if base["span_px"] < 40:
         warnings.append(f"the object spans only {base['span_px']:.0f} px: 1 px is {100 / base['span_px']:.1f}% of the focal length; use a larger or closer object")
     ms = [measurement("camera_vfov", "camera vertical FOV", base["vfov_deg"], res["uncertainty"]["vfov_deg"], "deg", method)]
-    return {"mode": "size", "image": [w, h], "unit": args.unit, "result": res, "measurements": ms, "warnings": warnings}
+    return {"mode": "size", "image": list(parse_image(args.image)), "viewport": vp, "unit": args.unit, "result": res,
+            "measurements": ms, "warnings": warnings}
 
 
 # ----------------------------------------------------------------- ground mode
@@ -418,7 +470,7 @@ def camera_from_rect(corners, w, h, c, width):
 
 def cmd_ground(args) -> dict:
     np = rc.require_numpy()
-    w, h = parse_image(args.image)
+    w, h, c, vp = frame_geometry(args)
     corners = parse_points(args.corners, "--corners", 2)
     if len(corners) != 4:
         rc.fail("--corners needs exactly four x,y points")
@@ -467,14 +519,31 @@ def cmd_ground(args) -> dict:
         return base, np.sqrt(acc), worst
 
     unit = args.unit
-    out = {"mode": "ground", "image": [w, h], "unit": unit, "rect": [rw, rl], "corners": corners,
+    out = {"mode": "ground", "image": list(parse_image(args.image)), "viewport": vp, "unit": unit, "rect": [rw, rl],
+           "corners": corners,
            "homography_img_to_ground": [[round(float(v), 10) for v in row] for row in hm], "warnings": [], "measurements": []}
-    c = rc.parse_float_list(args.principal, "--principal") if args.principal else [w / 2, h / 2]
     try:
-        out["camera_from_rect"] = {k: round(v, 4) for k, v in camera_from_rect(corners, w, h, c, rw).items()}
+        cam = camera_from_rect(corners, w, h, c, rw)
     except Unsolvable as exc:
+        cam = None
         out["camera_from_rect"] = None
         out["warnings"].append(f"camera not solvable from the rectangle alone ({exc}); the homography is still valid")
+    if cam is not None:
+        # The same +/-1 px sensitivity as vanishing mode: four corners pin a camera loosely, and a
+        # 2 px marking error can move the FOV by several degrees.
+        ckeys = ["focal_px", "vfov_deg", "hfov_deg", "pitch_deg", "roll_deg", "height"]
+        cunc, cworst, cunstable = sensitivity(
+            lambda q: camera_from_rect([q[i:i + 2] for i in range(0, 8, 2)], w, h, c, rw), flat, ckeys)
+        out["camera_from_rect"] = {k: round(v, 4) for k, v in cam.items()}
+        out["camera_from_rect"]["uncertainty"] = {k: (None if k in cunstable else round(cunc[k], 4)) for k in ckeys}
+        out["camera_from_rect"]["worst_case"] = {k: (None if k in cunstable else round(cworst[k], 4)) for k in ckeys}
+        for k in cunstable:
+            out["warnings"].append(f"camera {k} is unstable: a 1 px change in a corner makes the camera unsolvable; "
+                                   "mark a larger rectangle or use vanishing mode")
+        for k in ("vfov_deg", "pitch_deg"):
+            if k not in cunstable and cunc[k] > 3.0:
+                out["warnings"].append(f"camera {k} from the rectangle is poorly constrained (+/-{cunc[k]:.1f} deg for 1 px per "
+                                       "corner): mark a larger rectangle, or confirm with vanishing mode on longer lines")
 
     method = (f"camera_solve ground: homography from a {rw:g}x{rl:g} {unit} ground rectangle with corners {args.corners} "
               f"in a {w}x{h} frame; uncertainty = +/-1 px per corner coordinate in quadrature")
@@ -602,7 +671,8 @@ def print_result(out: dict) -> None:
 
         print(f"focal length: {pm('focal_px')} px")
         print(f"vertical FOV: {pm('vfov_deg')} deg   (Roblox Camera.FieldOfView)")
-        print(f"horizontal FOV: {pm('hfov_deg')} deg at {out['image'][0]}x{out['image'][1]}")
+        vpd = out.get('viewport'); dims = f"{vpd[2]:g}x{vpd[3]:g} viewport" if vpd else f"{out['image'][0]}x{out['image'][1]}"
+        print(f"horizontal FOV: {pm('hfov_deg')} deg at {dims}")
         if out["mode"] == "vanishing":
             print(f"pitch: {pm('pitch_deg')} deg   roll: {pm('roll_deg')} deg")
             if "height" in r:
@@ -611,8 +681,13 @@ def print_result(out: dict) -> None:
     else:
         cam = out.get("camera_from_rect")
         if cam:
-            print(f"camera from rectangle: vFOV {cam['vfov_deg']:.2f} deg, pitch {cam['pitch_deg']:.2f} deg, "
-                  f"height {cam['height']:.3f} {out['unit']} (principal point assumed centered)")
+            cu = cam.get("uncertainty") or {}
+
+            def cpm(k, d):
+                return f"{cam[k]:.{d}f} ± {cu[k]:.{d}f}" if cu.get(k) is not None else f"{cam[k]:.{d}f} (unstable)"
+
+            print(f"camera from rectangle: vFOV {cpm('vfov_deg', 2)} deg, pitch {cpm('pitch_deg', 2)} deg, "
+                  f"height {cpm('height', 3)} {out['unit']} (principal point assumed centered; ± for 1 px per corner)")
         for p in out.get("points", []):
             unc = f" ± {p['uncertainty']}" if p["uncertainty"] is not None else " (unstable)"
             print(f"px {p['px'][0]:g},{p['px'][1]:g} -> ground {p['ground'][0]}, {p['ground'][1]}{unc} {out['unit']}")
@@ -633,7 +708,7 @@ def luau_lines(out: dict) -> list[str]:
     r = out.get("result") or out.get("camera_from_rect")
     if not r:
         return []
-    u = (out.get("result") or {}).get("uncertainty", {})
+    u = (out.get("result") or out.get("camera_from_rect") or {}).get("uncertainty", {})
     lines = [f"FieldOfView = {r['vfov_deg']:.2f}, -- camera_solve {out['mode']}: vertical FOV ± {u.get('vfov_deg', '?')} deg"]
     if "pitch_deg" in r:
         lines.append(f"StartPitchDeg = {r['pitch_deg']:.2f}, -- camera_solve {out['mode']}: pitch ± {u.get('pitch_deg', '?')} deg")
@@ -641,7 +716,7 @@ def luau_lines(out: dict) -> list[str]:
 
 
 COORD_OPTIONS = {"--lines-x", "--lines-z", "--lines-y", "--known-height", "--known-ground", "--span", "--corners",
-                 "--points", "--principal"}
+                 "--points", "--principal", "--viewport"}
 
 
 def join_negative_values(argv: list[str]) -> list[str]:
@@ -665,7 +740,9 @@ def main() -> int:
 
     def common(p):
         p.add_argument("--image", required=True, help="source frame size, WxH (for example 1920x1080)")
-        p.add_argument("--principal", help="principal point cx,cy in px (default: image center)")
+        p.add_argument("--principal", help="principal point cx,cy in px (default: center of the viewport or image)")
+        p.add_argument("--viewport", help="x,y,w,h: the game picture inside the frame when it has black bars "
+                       "(letterbox/pillarbox); FOV is measured over it")
         p.add_argument("--unit", default="studs", help="world unit of known sizes (default studs)")
         p.add_argument("--out", type=Path, help="write JSON results here")
         p.add_argument("--json", action="store_true")

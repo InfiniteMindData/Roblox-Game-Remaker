@@ -16,8 +16,11 @@ and times are sim ticks / hz, so frame counts are exact. With several ids, pick 
 States are the game's own strings; the header's "grounded" list says which count as on the ground.
 
 Derived metrics:
-  ground_speed     median horizontal speed at full input, >= 0.5 s after move_start
-  accel_t90        time from move_start to 90% of ground_speed (median over starts)
+  ground_speed     median horizontal speed at full input over the last 0.5 s of each input window
+                   that reached a steady speed (the two halves of that tail agree within 3%). A
+                   window still speeding up when the input stops is left out with a warning; if no
+                   window settles, ground_speed is not observed (hold the input longer)
+  accel_t90        time from move_start to 90% of that window's steady speed (settled windows only)
   decel_t10        time from move_stop to below 10% of ground_speed
   jump_apex        apex height above the takeoff height (per jump)
   jump_rise_time   takeoff to apex
@@ -42,6 +45,12 @@ mean_frames, and a target with "unit": "frames" is judged in frames:
 TARGETS (JSON): {"metrics": {"jump_apex": {"target": 7.4, "tolerance": 0.3},
                              "ground_speed": {"target": 20, "tolerance_pct": 3}}}
 Metrics with a null target are reported but not judged.
+
+Every trial must land inside the tolerance (two jumps of 4 and 12 studs do not pass 8 ± 0.5 because
+their mean is 8). Each result reports "within" (trials inside the tolerance) and the policy. A target
+may relax it: "aggregate": "mean" judges the mean only; "min_fraction": 0.8 lets 80% of trials pass;
+"min_trials": 3 needs at least that many trials. A target naming a metric the log never produced
+(a state that was never played, or a misspelled name) is missing, never passed.
 
 Exit: 0 all judged metrics pass; 1 a metric fails, a targeted metric was not observed (unless
 --allow-missing), or the log has no motion samples at all; 2 bad input. With no targets nothing is
@@ -72,6 +81,8 @@ STATE_CODES = {0: "Unknown", 1: "Running", 2: "Jumping", 3: "Freefall", 4: "Land
 GROUNDED = {"Running", "RunningNoPhysics", "Landed"}
 
 
+KNOWN_METRICS = {"ground_speed", "accel_t90", "decel_t10", "jump_apex", "jump_rise_time", "jump_fall_time", "jump_airtime",
+                 "fall_speed_max", "input_latency", "input_latency_frames"}
 TIME_METRICS = {"accel_t90", "decel_t10", "jump_rise_time", "jump_fall_time", "jump_airtime", "input_latency"}
 
 
@@ -158,8 +169,9 @@ def derive(samples, events, latency=None, latency_key=None, grounded=None, inter
         if latency_key and lat["key"] != latency_key:
             continue
         if lat["f"] is not None and lat["f"] >= 0:
-            fd = lat["fd"] if lat.get("fd") else 1 / 60
-            out["input_latency"].append(lat["f"] * fd)
+            elapsed = lat.get("dt")
+            if isinstance(elapsed, (int, float)) and math.isfinite(elapsed) and elapsed >= 0:
+                out["input_latency"].append(float(elapsed))
             out["input_latency_frames"].append(float(lat["f"]))
     for name, (a, b) in (intervals or {}).items():
         vals = out.setdefault(name, [])
@@ -189,18 +201,51 @@ def derive(samples, events, latency=None, latency_key=None, grounded=None, inter
     for t0 in starts:
         t1 = next((t for t in stops if t > t0), float("inf"))
         windows.append((t0, t1))
+    # A steady speed is only observed when the speed has stopped changing: the last 0.5 s of the
+    # window's full-input samples, split in two halves whose medians agree within 3%. A run cut
+    # short while still accelerating would otherwise report its mid-ramp speed (and half its t90).
+    notes = out.setdefault("_notes", [])  # type: ignore[arg-type]
+    full_rows = [s for s in samples if is_full(s)]
+
+    def settled(rows):
+        """(steady speed, tail speeds) when the last 0.5 s is flat, else (None, reason)."""
+        if len(rows) < 6:
+            return None, "fewer than 6 full-input samples"
+        t_end = rows[-1]["t"]
+        tail = [s for s in rows if s["t"] >= t_end - 0.5]
+        if len(tail) < 6 or t_end - tail[0]["t"] < 0.2:
+            return None, "less than 0.2 s of full-input samples at the end"
+        half = len(tail) // 2
+        a, b = statistics.median(hspeed(s) for s in tail[:half]), statistics.median(hspeed(s) for s in tail[half:])
+        if abs(b - a) > 0.03 * max(abs(a), abs(b), 1e-9):
+            return None, f"speed still changing at the end ({a:.3g} -> {b:.3g} over the last {t_end - tail[0]['t']:.2f} s)"
+        return statistics.median(hspeed(s) for s in tail), [hspeed(s) for s in tail]
+
+    window_steady, full = [], []
     if windows:
-        full = [hspeed(s) for s in samples if is_full(s) and any(a + 0.5 <= s["t"] < b for a, b in windows)]
+        for t0, t1 in windows:
+            rows = [s for s in full_rows if t0 + 0.5 <= s["t"] < t1]
+            v, tail = settled(rows)
+            window_steady.append(v)
+            if v is None:
+                if rows:
+                    notes.append(f"input window at {t0:.3f} s never reached a steady speed ({tail}): left out of "
+                                 "ground_speed and accel_t90; hold the input longer")
+            else:
+                full += tail
     else:
-        full = [hspeed(s) for s in samples if is_full(s)]
+        v, tail = settled(full_rows)
+        if v is None:
+            if full_rows:
+                notes.append(f"the run never reached a steady speed ({tail}): ground_speed not observed; hold the input longer")
+        else:
+            full = tail
     steady = statistics.median(full) if full else None
     if steady:
         out["ground_speed"].append(steady)
     # Acceleration and deceleration use each window's own steady speed, so walks at different speeds
     # (forward and backward, walk and run) do not distort each other.
-    for t0, t1 in windows:
-        own = [hspeed(s) for s in samples if is_full(s) and t0 + 0.5 <= s["t"] < t1]
-        ref = statistics.median(own) if own else steady
+    for (t0, t1), ref in zip(windows, window_steady):
         if not ref:
             continue
         nxt = next((s for s in samples if t0 <= s["t"] < t1 and hspeed(s) >= 0.9 * ref), None)
@@ -272,9 +317,29 @@ def judge(values: list[float], spec: dict | None, hz: float | None = None, timed
     else:
         rc.fail("each target needs 'tolerance' or 'tolerance_pct'")
     err = mean - target
+    # Per-trial acceptance: by default every trial must be inside the tolerance, so alternating
+    # wrong trials cannot average into a pass.
+    aggregate = spec.get("aggregate", "all")
+    if aggregate not in ("all", "mean"):
+        rc.fail(f"target 'aggregate' must be 'all' or 'mean' (got {aggregate!r})")
+    within = sum(1 for v in values if abs(v - target) <= tol + 1e-12)
+    min_fraction = float(spec.get("min_fraction", 1.0))
+    min_trials = int(spec.get("min_trials", 1))
+    ok = abs(err) <= tol
+    note = None
+    if ok and aggregate == "all" and within < min_fraction * len(values) - 1e-9:
+        ok = False
+        note = (f"only {within} of {len(values)} trials are within ± {tol:.4g} (the mean is, but the trials spread "
+                f"{min(values):.4g}..{max(values):.4g})")
+    if ok and len(values) < min_trials:
+        ok = False
+        note = f"{len(values)} trials, the target needs at least {min_trials}"
     res.update({"target": target, "tolerance": round(tol, 5), "error": round(err, 4),
                 "error_pct": round(100 * err / target, 3) if target else None,
-                "status": "pass" if abs(err) <= tol else "fail", "source": spec.get("source")})
+                "within": within, "policy": "mean" if aggregate == "mean" else f"trials>={min_fraction:g}",
+                "status": "pass" if ok else "fail", "source": spec.get("source")})
+    if note:
+        res["note"] = note
     return res
 
 
@@ -309,10 +374,23 @@ def main() -> int:
         targets = data.get("metrics", {}) if isinstance(data, dict) else {}
     derived = derive(samples, events, latency, args.latency_key, meta.get("grounded"), intervals)
     unpaired = derived.pop("_unpaired", {})
+    notes = derived.pop("_notes", [])
     timed = TIME_METRICS | set(intervals)
     results = {name: judge(vals, targets.get(name), hz, name in timed) for name, vals in derived.items()}
+    # Every target is accounted for: one the log never produced (a state never played, a misspelled
+    # name) is missing, never silently absent from the report.
+    known = set(derived) | KNOWN_METRICS
+    for name, spec in targets.items():
+        if name in results or not isinstance(spec, dict) or spec.get("target") is None:
+            continue
+        if name in known or name.startswith("ground_speed["):
+            results[name] = {"n": 0, "status": "not-observed"}
+        else:
+            results[name] = {"n": 0, "status": "unknown-metric",
+                             "note": f"{name!r} is not a metric this tool derives (check the spelling, or add --interval)"}
     failed = [n for n, r in results.items() if r["status"] == "fail"]
-    missing = [n for n, r in results.items() if r["status"] == "not-observed" and targets.get(n, {}).get("target") is not None]
+    missing = [n for n, r in results.items() if r["status"] in ("not-observed", "unknown-metric")
+               and (targets.get(n) or {}).get("target") is not None]
     ok = not failed and (args.allow_missing or not missing)
     judged = [n for n, r in results.items() if r["status"] in ("pass", "fail")]
     status = "fail" if not ok else ("pass" if judged else "unchecked")
@@ -321,7 +399,7 @@ def main() -> int:
               "samples": len(samples), "events": len(events), "unparsed_lines": bad, "status": status,
               "unpaired_intervals": unpaired,
               "latency_presses": len(latency), "latency_timeouts": timeouts,
-              "metrics": results, "failed": failed, "missing": missing, "pass": ok}
+              "metrics": results, "failed": failed, "missing": missing, "warnings": notes, "pass": ok}
     if args.json:
         print(json.dumps(report, indent=2))
     else:
@@ -333,11 +411,14 @@ def main() -> int:
             fr = f" = {r['mean_frames']} frames" if r.get("mean_frames") is not None else ""
             if r["status"] in ("pass", "fail"):
                 print(f"{r['status'].upper():<5} {name:<15} {r['mean']}{unit}{fr} (n={r['n']}, std {r['std']}) "
-                      f"target {r['target']} ± {r['tolerance']}  error {r['error']:+}")
+                      f"target {r['target']} ± {r['tolerance']}  error {r['error']:+}  within {r['within']}/{r['n']}"
+                      + (f"  ({r['note']})" if r.get("note") else ""))
             elif r["status"] == "no-target":
                 print(f"info  {name:<15} {r['mean']}{unit}{fr} (n={r['n']}, std {r['std']})")
             elif name in missing:
-                print(f"MISS  {name:<15} not observed (reproduce this test in the playtest)")
+                print(f"MISS  {name:<15} " + (r.get("note") or "not observed (reproduce this test in the playtest)"))
+        for n in notes:
+            print(f"WARNING: {n}", file=sys.stderr)
         for name, n in unpaired.items():
             print(f"note  {name:<15} {n} start event(s) had no end before the next start (not averaged)")
         if status == "unchecked":

@@ -172,7 +172,26 @@ def shot_table(s: dict) -> str:
         parts.append(f"fov = {luau_num(num(cam['fov'], 'fov'))}")
     if s.get("clock_time") is not None:
         parts.append(f"clockTime = {luau_num(num(s['clock_time'], 'clock_time'))}")
-    parts.append("hideGui = true")
+    policy = s.get("gui_policy", "hide_developer")
+    if policy not in ("keep", "hide_developer", "hide_all"):
+        rc.fail("gui_policy must be keep, hide_developer or hide_all")
+    projection = cam.get("projection", "perspective")
+    if projection not in ("perspective", "orthographic"):
+        rc.fail("camera.projection must be perspective or orthographic")
+    axis = cam.get("orthographic_axis", "Vertical")
+    if axis not in ("Vertical", "Horizontal"):
+        rc.fail("camera.orthographic_axis must be Vertical or Horizontal")
+    mode = cam.get("fov_mode", "Vertical")
+    if mode not in ("Vertical", "Diagonal", "MaxAxis"):
+        rc.fail("camera.fov_mode must be Vertical, Diagonal or MaxAxis")
+    parts += [f'guiPolicy = "{policy}"', f'projection = "{projection.title()}"', f'fovMode = "{mode}"']
+    if projection == "orthographic":
+        if cam.get("orthographic_size") is None:
+            rc.fail("orthographic shots need camera.orthographic_size")
+        size = num(cam["orthographic_size"], "orthographic_size")
+        if size <= 0:
+            rc.fail("orthographic_size must be positive")
+        parts += [f"orthographicSize = {luau_num(size)}", f'orthographicAxis = "{axis}"']
     return "{ " + ", ".join(parts) + " }"
 
 
