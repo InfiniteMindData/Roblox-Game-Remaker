@@ -425,11 +425,23 @@ def main() -> int:
 
     rows = load_events(args.events, args.fps, args.manifest) if args.events else []
     frame_s = 1 / args.fps if args.fps else 0.0
+    sparse_note = None
     if args.manifest and rows:
-        ts = sorted({r["_t"] for r in rows})
         _, frames, _ = rc.load_manifest(args.manifest)
-        pt = sorted(float(f["pts_time"]) for f in frames)
-        frame_s = max((b - a for a, b in zip(pt, pt[1:])), default=0.0)
+        # Quantization is one SOURCE frame: an event is known to the frame it shows up on, whatever
+        # frames were extracted. Each pair of neighbouring extracted frames gives the source frame
+        # period between them (time difference / index difference); the longest one counts.
+        idx = sorted((int(f["index"]), float(f["pts_time"])) for f in frames if f.get("index") is not None)
+        if len(idx) >= 2:
+            per = [(tb - ta) / (ib - ia) for (ia, ta), (ib, tb) in zip(idx, idx[1:]) if ib > ia]
+            frame_s = max(per, default=0.0)
+            if any(ib - ia > 1 for (ia, _), (ib, _) in zip(idx, idx[1:])):
+                sparse_note = (f"frames were extracted sparsely: quantization uses the source frame period between them "
+                               f"({frame_s:.5f} s); a variable frame rate between extracted frames is not visible "
+                               "(extract every frame for exact quantization)")
+        else:
+            pt = sorted(float(f["pts_time"]) for f in frames)
+            frame_s = max((b - a for a, b in zip(pt, pt[1:])), default=0.0)
     if rows and frame_s == 0 and all(r["_frame"] is None for r in rows):
         frame_s = 0.0  # times given in seconds: quantization unknown; say so below
     report = {"tool": TOOL, "schema": SCHEMA, "source": str(args.events) if args.events else None,
@@ -437,6 +449,8 @@ def main() -> int:
               "measurements": [], "warnings": []}
     for r in rows:
         report["events"][r["event"]] = report["events"].get(r["event"], 0) + 1
+    if sparse_note:
+        report["warnings"].append(sparse_note)
     if rows and frame_s == 0:
         report["warnings"].append("times were given in seconds without --fps: frame quantization is not included in the uncertainties")
 

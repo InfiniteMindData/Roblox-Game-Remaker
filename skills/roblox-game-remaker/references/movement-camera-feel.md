@@ -64,6 +64,11 @@ For apex height *h*, rise time *t_r* and fall time *t_f*:
 python scripts/remake_calc.py jump --apex 7.4 --rise-time 0.383 --fall-time 0.300 --min-apex 3.0 --release-time 0.05 --luau
 ```
 
+Heights in metres or feet (from a real-world or a game's own scale): pass `--unit meters` (or
+`cm`, `feet`) and `--studs-per-meter` if the world scale is not the official 1 stud = 0.28 m. The
+Roblox lines and the Luau are then in studs (1.4 m with a 0.4 s rise is 5 studs and 62.5
+studs/s²). An unknown unit (`px`) prints no Roblox values.
+
 ### Implement
 
 - Set `Workspace.Gravity = g_r` (server, from `Config.World.Gravity`), `UseJumpPower = false` and
@@ -104,6 +109,10 @@ python scripts/fit_curve.py --track remake/tracks/cam-stop.json --field x_px --w
 # rank 1 Spring: omega, zeta -> Config.Camera FollowFrequency / FollowDamping (with uncertainties)
 ```
 
+  Read `model_confirmed` before you copy a number: when the residuals run in long same-sign
+  stretches no candidate matches (keyframes, a smoothstep, tracking drift), and the ± is widened
+  and marked as a lower bound.
+
   If only the overshoot and settle time are known (no track), `remake_calc.py spring --overshoot 0
   --settle-time 0.35` converts them instead.
 
@@ -143,4 +152,9 @@ unless the original was itself a VR game and the user accepts the comfort trade-
 2. Reproduce the reference test: a standing start, one jump, a tap jump, a stop.
 3. Copy the Output (or use MCP `get_console_output`) to `remake/logs/run-01.log`.
 4. Run `python scripts/measure_compare.py remake/logs/run-01.log --targets remake/targets.json`.
+   Hold the movement input until the speed has been flat for at least 0.5 s: a run cut short
+   while still speeding up reports no `ground_speed` or `accel_t90` (with a warning) instead of a
+   mid-ramp number. Every jump or start is judged on its own (`within` counts them), so an
+   inconsistent build cannot average into a pass; a targeted metric the log never produced is
+   reported missing.
 5. Adjust `Config`, re-run, and log each iteration in `remake/diff-log.md`.

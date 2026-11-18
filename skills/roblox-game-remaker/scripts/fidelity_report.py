@@ -13,15 +13,20 @@ then appends one line to remake/history.jsonl and writes remake/scorecard.md.
 Every system gets a normalized error r, where r <= 1 passes:
   metric (target ± tolerance)         r = |error| / tolerance
   shot threshold "at most T"          r = value / T                  (delta_e_mean)
-  shot threshold "at least T"         r = (1 - value) / (1 - T)       (ssim, edge_iou)
+  shot threshold "at least T"         r = (1 - value) / (1 - T)       (ssim, edge_iou, local_ssim)
   clip                                r = the largest of rms/tol_rms, max/tol_max, |offset|/tol_event
+A system its own tool marked failed stays failed here whatever r says (a threshold whose metric was
+not measured, an event missing from the build, an aspect mismatch). Thresholds come from each
+result (visual_compare batch summaries store them per shot), falling back to remake/shots.json. A
+targeted metric the harness log never produced is listed as missing. Clips are keyed by --clip id,
+or by the full path of the reference track, so two references with the same file name stay apart.
   ui layout                           r = worst element error / tolerance (% of screen); a reference
                                       element missing from the recreation fails
 Systems without a tolerance are listed as info.
 
 A regression is a system that passed in the previous history entry and fails now, or that still
 fails with r larger by more than --margin (default 0.1). Exit: 0 no regression, 1 a regression
-(or --fail-on-fail and something fails), 2 bad input.
+(or --fail-on-fail and something fails or is missing), 2 bad input.
 
 Examples:
   python fidelity_report.py remake --label "it7: ExposureCompensation 0.35"
@@ -44,7 +49,7 @@ import remake_common as rc  # noqa: E402
 TOOL = "fidelity_report"
 SCHEMA = 1
 HERE = Path(__file__).resolve().parent
-MIN_KEYS = ("ssim", "edge_iou")  # thresholds that must be at least T
+MIN_KEYS = ("ssim", "edge_iou", "local_ssim")  # thresholds that must be at least T
 MAX_KEYS = ("delta_e_mean",)  # thresholds that must be at most T
 
 
@@ -65,7 +70,7 @@ def shot_ratio(metrics: dict, thresholds: dict) -> tuple[float | None, dict]:
     for k, thr in (thresholds or {}).items():
         v = metrics.get(k)
         if thr is None or v is None:
-            continue
+            continue  # a threshold without its metric is a failure the tool already recorded
         if k in MIN_KEYS:
             parts[k] = (1 - v) / max(1e-9, 1 - thr)
         elif k in MAX_KEYS:
@@ -91,12 +96,16 @@ def collect_shots(remake: Path, shots_file: Path | None) -> tuple[dict, list[str
                 out[f"shot:{sid}"] = {"kind": "shot", "status": "missing", "r": None, "detail": s.get("status")}
                 continue
             m = s.get("metrics") or {}
-            r, parts = shot_ratio(m, thresholds.get(sid, {}))
+            thr = s.get("thresholds") if s.get("thresholds") else thresholds.get(sid, {})
+            r, parts = shot_ratio(m, thr)
             out[f"shot:{sid}"] = {"kind": "shot", "r": None if r is None else round(r, 4), "parts": parts,
-                                  "values": {k: m.get(k) for k in ("ssim", "delta_e_mean", "edge_iou")},
+                                  "values": {k: m.get(k) for k in ("ssim", "delta_e_mean", "edge_iou", "local_ssim")},
+                                  "thresholds": thr,
                                   "status": "info" if r is None else ("pass" if r <= 1 else "fail")}
             if s.get("aspect_mismatch"):  # a stretched comparison is not a measurement
                 out[f"shot:{sid}"].update({"status": "fail", "detail": "aspect mismatch: recapture at the reference aspect ratio"})
+            elif s.get("status") == "fail":  # the batch judged it failed: never downgrade that to info or pass
+                out[f"shot:{sid}"].update({"status": "fail", "detail": "; ".join(s.get("failures") or []) or "failed in visual_compare"})
     else:
         for rep in sorted((remake / "diff").rglob("report.json")):
             data = load(rep) or {}
@@ -106,10 +115,13 @@ def collect_shots(remake: Path, shots_file: Path | None) -> tuple[dict, list[str
             key = f"shot:{rep.parent.relative_to(remake / 'diff')}"
             r, parts = shot_ratio(data.get("metrics", {}), data.get("thresholds") or {})
             out[key] = {"kind": "shot", "r": None if r is None else round(r, 4), "parts": parts,
-                        "values": {k: data.get("metrics", {}).get(k) for k in ("ssim", "delta_e_mean", "edge_iou")},
+                        "values": {k: data.get("metrics", {}).get(k) for k in ("ssim", "delta_e_mean", "edge_iou", "local_ssim")},
+                        "thresholds": data.get("thresholds") or {},
                         "status": "info" if r is None else ("pass" if r <= 1 else "fail")}
             if any(f.startswith("aspect mismatch") for f in data.get("failures") or []):
                 out[key].update({"status": "fail", "detail": "aspect mismatch: recapture at the reference aspect ratio"})
+            elif data.get("status") == "fail":
+                out[key].update({"status": "fail", "detail": "; ".join(data.get("failures") or []) or "failed in visual_compare"})
     return out, sources
 
 
@@ -127,12 +139,17 @@ def collect_metrics(remake: Path, log: Path | None) -> tuple[dict, list[str]]:
     data = json.loads(proc.stdout)
     out = {}
     for name, m in data.get("metrics", {}).items():
-        if m.get("status") == "not-observed":
+        if m.get("status") in ("not-observed", "unknown-metric"):
+            if name in (data.get("missing") or []):  # targeted but never produced: a check that did not run
+                out[f"metric:{name}"] = {"kind": "metric", "r": None, "status": "missing", "value": None,
+                                         "detail": m.get("note") or "targeted but not observed in the harness log"}
             continue
         if m.get("status") in ("pass", "fail"):
             r = abs(m["error"]) / max(1e-12, m["tolerance"])
             out[f"metric:{name}"] = {"kind": "metric", "r": round(r, 4), "status": m["status"], "value": m["mean"],
                                      "target": m["target"], "tolerance": m["tolerance"], "error": m["error"]}
+            if m["status"] == "fail" and r <= 1:  # the mean is in tolerance but individual trials are not
+                out[f"metric:{name}"]["detail"] = m.get("note") or "individual trials outside the tolerance"
         else:
             out[f"metric:{name}"] = {"kind": "metric", "r": None, "status": "info", "value": m.get("mean")}
     return out, [str(log)]
@@ -147,7 +164,7 @@ def collect_clips(remake: Path, clip_files: list[Path]) -> tuple[dict, list[str]
             continue
         # Group the same comparison across iterations: the clip id when clip_compare had --clip,
         # otherwise the reference source (the recreation's file name changes every iteration).
-        key = data.get("clip_id") or Path(data["reference"]["source"]).name
+        key = data.get("clip_id") or str(Path(data["reference"]["source"]).resolve())
         mt = p.stat().st_mtime
         if key not in latest or mt > latest[key][0]:
             latest[key] = (mt, p, data)
@@ -167,7 +184,10 @@ def collect_clips(remake: Path, clip_files: list[Path]) -> tuple[dict, list[str]
         r = max(parts.values()) if parts else None
         out[f"clip:{key}"] = {"kind": "clip", "r": None if r is None else round(r, 4), "parts": {k: round(v, 4) for k, v in parts.items()},
                               "value": {"rms": data.get("position_rms"), "max": data.get("position_max")}, "file": str(p),
+                              "tolerances": tol,
                               "status": "info" if r is None else ("pass" if r <= 1 else "fail")}
+        if data.get("failures"):  # clip_compare failed it (for example an event missing from the build)
+            out[f"clip:{key}"].update({"status": "fail", "detail": "; ".join(data["failures"])})
     return out, [str(v[1]) for v in latest.values()]
 
 
@@ -237,6 +257,10 @@ def render(entry: dict, regressions: list[str]) -> str:
     for name, s in sorted(entry["systems"].items(), key=lambda kv: (kv[1]["status"] != "fail", kv[0])):
         if s["kind"] == "metric" and s.get("target") is not None:
             detail = f"{s['value']} vs {s['target']} ± {s['tolerance']} (error {s['error']:+})"
+            if s.get("detail"):
+                detail += f"; {s['detail']}"
+        elif s["kind"] == "metric" and s.get("status") == "missing":
+            detail = s.get("detail") or "not measured"
         elif s["kind"] == "metric":
             detail = f"{s.get('value')} (no target)"
         elif s["kind"] == "shot":
@@ -247,8 +271,12 @@ def render(entry: dict, regressions: list[str]) -> str:
             detail = f"worst {v.get('worst_pct')}% of screen ({v.get('worst_element')})"
             if v.get("missing"):
                 detail += f"; missing: {', '.join(v['missing'])}"
+        elif s.get("value"):
+            detail = f"rms {s['value']['rms']}, max {s['value']['max']}; {s.get('parts')}"
+            if s.get("detail"):
+                detail += f"; {s['detail']}"
         else:
-            detail = s.get("detail") or f"rms {s['value']['rms']}, max {s['value']['max']}; {s.get('parts')}"
+            detail = s.get("detail") or ""
         ch = "" if s.get("change") is None else f"{s['change']:+.3f}"
         r = "" if s.get("r") is None else f"{s['r']:.3f}"
         lines.append(f"| {name} | {s['status']} | {r} | {ch} | {detail} |")
@@ -289,7 +317,8 @@ def main() -> int:
     ap.add_argument("--margin", type=float, default=0.1, help="worsening of r that counts as a regression for failing systems")
     ap.add_argument("--diff-log", action="store_true", help="also append an iteration block to remake/diff-log.md")
     ap.add_argument("--dry-run", action="store_true", help="print the scorecard without writing history or files")
-    ap.add_argument("--fail-on-fail", action="store_true", help="exit 1 when any system fails, not only on regressions")
+    ap.add_argument("--fail-on-fail", action="store_true",
+                    help="exit 1 when any system fails or is missing, not only on regressions")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     if not args.remake.is_dir():
@@ -330,7 +359,7 @@ def main() -> int:
     if regressions:
         print("REGRESSION: " + "; ".join(regressions), file=sys.stderr)
         return rc.EXIT_FAIL
-    if args.fail_on_fail and counts["fail"]:
+    if args.fail_on_fail and (counts["fail"] or counts["missing"]):
         return rc.EXIT_FAIL
     return rc.EXIT_OK
 
